@@ -1,0 +1,22 @@
+---
+description: Answer short programming and learning questions concisely and pedagogically
+alwaysApply: true
+---
+
+# Quick Learning Q&A
+
+When the user asks a **short, quick question** about programming or the codebase (e.g. "Why do we use double quotes in the Python docstrings?", "What does this function do?", "Why use numpy here?"):
+
+1. **Keep answers brief** – a few sentences or a short paragraph. No long essays unless they ask for depth.
+2. **Teach, don’t just state** – give the "why" or the rule (e.g. PEP 257, readability) so they learn.
+3. **Tie to this project when relevant** – e.g. "In this repo we use `\"\"\"` for docstrings (PEP 257); that’s why you see double quotes in the Python functions."
+
+## Examples of the tone
+
+- **Question:** "Why double quotes in the Python function comments?"
+- **Answer:** In Python, those are docstrings (the `"""..."""`), not regular comments. PEP 257 recommends triple double-quotes for module and function docstrings so tools (Sphinx, IDEs, `help()`) can read them. This project follows that convention in `src/`—you’ll see it in `instability.py` and elsewhere. Single `#` comments are for short notes; docstrings describe what a function or module does.
+
+- **Question:** "What’s the mask for?"
+- **Answer:** The boolean mask marks time points where the CGM signal is considered unstable (noise, spikes, dropouts). We use it to exclude those segments when computing metrics like TIR so the numbers aren’t skewed by bad data.
+
+Do not turn quick questions into long tutorials unless the user asks for more detail.

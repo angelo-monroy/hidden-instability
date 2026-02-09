@@ -1,0 +1,50 @@
+---
+description: Prefer native R pipe |> over magrittr %>%; avoid dot notation
+globs: "**/*.R,**/*.r"
+alwaysApply: false
+---
+
+# R: Prefer Native Pipe `|>`
+
+Use the **native/base R pipe** `|>` (R 4.1+) instead of the magrittr pipe `%>%`.
+
+## Why
+
+- `|>` is built into R; no dependency on magrittr or tidyverse for piping.
+- Code stays consistent with base R and works the same across environments.
+
+## Important difference
+
+With `%>%`, the previous result is passed as `.` and can be placed anywhere in the call:
+
+```r
+# magrittr: dot (.) can go anywhere
+x %>% some_fun(., y)
+x %>% some_fun(y, .)
+```
+
+With `|>`, the previous result is always passed as the **first unnamed argument**—there is no dot:
+
+```r
+# native: result becomes first unnamed argument only
+x |> some_fun(y)           # same as some_fun(x, y)
+x |> some_fun(y, _)        # R 4.2+: _ is placeholder for piped value
+```
+
+So when using `|>`:
+
+- Prefer functions that take the main data as the first argument (e.g. tidyverse-style).
+- If you need the value elsewhere, use the `_` placeholder (R 4.2+) or call the function normally instead of piping.
+- Do **not** use `%>%` or dot notation; rewrite to `|>` or a direct call.
+
+## Examples
+
+```r
+# Prefer
+dat |> filter(condition) |> summarise(n = n())
+dat |> mutate(x = a + b)
+
+# Avoid
+dat %>% filter(condition) %>% summarise(n = n())
+dat %>% .$column
+```
