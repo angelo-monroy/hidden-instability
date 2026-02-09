@@ -42,19 +42,24 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 1.3 `drift_window_mask(glucose, window_hr=3, interval_min=5, threshold_mgdL=30)`
+### 1.3 `drift_window_mask(glucose, *, drift_duration_hr=24, low_threshold_mgdL=70, low_duration_hr=8, interval_min=5)`
 
-**Intent:** Flag sustained “drift” (monotonic or near-monotonic drift over hours).
+**Intent:** Flag two patterns that may indicate sensor drift or governance blind spots (not normal physiologic swings from insulin/carbs):
+
+1. **Monotonic drift > 24 h:** Glucose drifts in one direction for longer than a day. Possible sensor drift or untreated elevation; flagged as potential instability, not verified.
+2. **Below range for > 8 h:** Glucose is below 70 mg/dL and stays there for more than 8 hours. Flagged as potential sensor drift (reading low) or prolonged hypo.
 
 **Logic:**
-- Window length = 3 hr → 36 readings @ 5 min.
-- At each window, `range = max(glucose) − min(glucose)` in that window.
-- If `range >= threshold_mgdL` (default 30), **every index in that window** is marked `True`.
+- **Monotonic:** Sliding window of 24 h (288 points @ 5 min). For each window, require all finite; if `np.diff(window)` is all ≥ 0 or all ≤ 0, mark the **entire window** `True`.
+- **Below 70 for 8+ h:** Find contiguous runs where `glucose < 70` (and finite). If run length > 96 points (8 h), mark **all indices in that run** `True`.
+
+**Cost:** Monotonic check is O(n × 288) for 24 h windows; low run is O(n). For 30 days @ 5 min, ~2.5e6 ops for monotonic, negligible for low run.
 
 **Choices you may want to change:**
-- **Window:** 3 hr is from the plan; could be 2 hr, 4 hr, or session-based.
-- **Threshold:** 30 mg/dL is a placeholder; you may have a physiologic or device-specific cutoff.
-- **Definition of “drift”:** Current definition is “range in window,” not strictly monotonic. So a V-shaped dip would also be flagged. If you want “monotonic drift only,” we’d need a different check (e.g. slope or monotonicity test).
+- **Drift duration:** 24 h default; could be 12 h or 48 h.
+- **Low threshold:** 70 mg/dL (below range); could add level 2 (e.g. 54).
+- **Low duration:** 8 h default; could be 4 h or 12 h.
+- **Monotonic strictness:** Currently strict (every step same sign); could relax with a tolerance for small reversals.
 
 ---
 
@@ -167,7 +172,7 @@ Once you specify which of these (and how you want them defined), they can be add
 |----------|---------|-----------------|-------------|
 | `local_variance_mask` | High short-term variance | window 30 min, threshold 95th %ile | |
 | `jump_spike_mask` | Single-step spike | 20 mg/dL per 5 min | |
-| `drift_window_mask` | Range in 3 hr ≥ 30 mg/dL | window 3 hr, threshold 30 | |
+| `drift_window_mask` | Monotonic > 24 h OR below 70 for > 8 h | drift_duration_hr=24, low=70, low_duration_hr=8 | |
 | `dropout_flatline_mask` | Identical readings 30 min | exact equality, 30 min | |
 | `instability_mask` | OR of all four | all of the above | |
 | `compute_TIR` | % time in [70, 180] | low, high | |

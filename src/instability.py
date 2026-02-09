@@ -46,24 +46,62 @@ def jump_spike_mask(glucose, threshold_mgdL=20, interval_min=5):
     return diff > threshold_mgdL
 
 
-def drift_window_mask(glucose, window_hr=3, interval_min=5, threshold_mgdL=30):
+def drift_window_mask(
+    glucose,
+    *,
+    drift_duration_hr=24,
+    low_threshold_mgdL=70,
+    low_duration_hr=8,
+    interval_min=5,
+):
     """
-    Monotonic deviation over window_hr exceeding threshold_mgdL
-    (max - min in window).
+    Flag two patterns that may indicate sensor drift or governance blind spots
+    (not physiologic swings from insulin/carbs):
+
+    1. Monotonic drift > drift_duration_hr (default 24 h): glucose drifts in one
+       direction for longer than a day. Possible sensor drift or untreated
+       elevation; flagged as potential instability, not verified.
+
+    2. Below range for > low_duration_hr (default 8 h): glucose is below
+       low_threshold_mgdL (default 70) and stays there for more than 8 hours.
+       Flagged as potential sensor drift (reading low) or prolonged hypo.
+
+    Cost: monotonic check is O(n * window_length) with window = 24h of points;
+    low run is O(n). For 30 days @ 5 min, ~2.5e6 ops for monotonic, negligible for low run.
     """
     arr = _as_array(glucose)
     n = arr.size
-    k = max(2, int(window_hr * 60 / interval_min))
-    if n < k:
-        return np.zeros(n, dtype=bool)
+    points_per_hr = int(60 / interval_min)
+    k_drift = max(2, int(drift_duration_hr * points_per_hr))   # e.g. 288 for 24 h @ 5 min
+    k_low = max(2, int(low_duration_hr * points_per_hr))       # e.g. 96 for 8 h @ 5 min
 
     out = np.zeros(n, dtype=bool)
-    for i in range(k - 1, n):
-        w = arr[i - k + 1 : i + 1]
-        if np.any(np.isfinite(w)):
-            r = np.nanmax(w) - np.nanmin(w)
-            if r >= threshold_mgdL:
-                out[i - k + 1 : i + 1] = True
+
+    # 1. Monotonic drift longer than drift_duration_hr
+    if n >= k_drift:
+        for i in range(k_drift - 1, n):
+            w = arr[i - k_drift + 1 : i + 1]
+            if not np.all(np.isfinite(w)):
+                continue
+            d = np.diff(w)
+            if (d >= 0).all() or (d <= 0).all():
+                out[i - k_drift + 1 : i + 1] = True
+
+    # 2. Below low_threshold_mgdL for longer than low_duration_hr
+    below = (arr < low_threshold_mgdL) & np.isfinite(arr)
+    if np.any(below):
+        run_start = None
+        for i in range(n + 1):
+            if i < n and below[i]:
+                if run_start is None:
+                    run_start = i
+            else:
+                if run_start is not None:
+                    run_len = i - run_start
+                    if run_len > k_low:
+                        out[run_start:i] = True
+                    run_start = None
+
     return out
 
 
@@ -90,8 +128,9 @@ def instability_mask(
     *,
     variance_threshold=None,
     jump_threshold_mgdL=20,
-    drift_window_hr=3,
-    drift_threshold_mgdL=30,
+    drift_duration_hr=24,
+    low_threshold_mgdL=70,
+    low_duration_hr=8,
     flatline_window_min=30,
     interval_min=5,
 ):
@@ -105,7 +144,13 @@ def instability_mask(
 
     m1 = local_variance_mask(arr, window_min=30, interval_min=interval_min, threshold=variance_threshold)
     m2 = jump_spike_mask(arr, threshold_mgdL=jump_threshold_mgdL, interval_min=interval_min)
-    m3 = drift_window_mask(arr, window_hr=drift_window_hr, interval_min=interval_min, threshold_mgdL=drift_threshold_mgdL)
+    m3 = drift_window_mask(
+        arr,
+        drift_duration_hr=drift_duration_hr,
+        low_threshold_mgdL=low_threshold_mgdL,
+        low_duration_hr=low_duration_hr,
+        interval_min=interval_min,
+    )
     m4 = dropout_flatline_mask(arr, window_min=flatline_window_min, interval_min=interval_min)
 
     # ensure same length (edge effects can differ by 1)
