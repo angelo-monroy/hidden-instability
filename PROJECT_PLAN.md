@@ -33,7 +33,8 @@ All features in this category are calculated directly from your private CGM time
 
 1. **Instability Heuristics**  
    - Defined algorithmically for each sensor session using the raw CGM time series:  
-     - `local_variance`: rolling variance over 30-minute windows  
+     - `local_variance`: rolling variance over 30-minute windows
+       - Stable glucose doesn’t jump around much in short windows. If a 30‑min window has unusually high variance, that can indicate sensor noise, compression artifacts, or unreliable readings.
      - `jump_spike`: consecutive readings with absolute change > X mg/dL within 5 minutes  
      - `drift_window`: monotonic deviation over > 3 hours exceeding threshold  
      - `dropout_flatline`: repeated identical readings over > 30 minutes  

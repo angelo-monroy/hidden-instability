@@ -107,19 +107,65 @@ def drift_window_mask(
 
 def dropout_flatline_mask(glucose, window_min=30, interval_min=5):
     """
-    Repeated identical readings over at least window_min (e.g. 6 same values @ 5 min).
+    Flag two patterns:
+
+    1. Flatline: repeated identical readings over at least window_min (e.g. 6 same
+       values @ 5 min). Same value held for 30+ min can indicate sensor stuck.
+
+    2. Dropout: any reading that is NaN. When a sensor fails or drops out we get
+       NaNs; the occasional NaN between two numeric values is still dropout and
+       is flagged. Every NaN is marked unstable.
+
+    Session-level context: max session length depends on device—use
+    max_session_days(device_id) from src.session (G7 → 10.5 days, G6 → 10 days).
     """
     arr = _as_array(glucose)
     n = arr.size
+
+    # 1. Flatline: same value for window_min or longer
+    out = np.zeros(n, dtype=bool)
     k = max(2, int(window_min / interval_min))
-    if n < k:
-        return np.zeros(n, dtype=bool)
+    if n >= k:
+        for i in range(k - 1, n):
+            w = arr[i - k + 1 : i + 1]
+            if np.all(np.isfinite(w)) and np.nanmax(w) == np.nanmin(w):
+                out[i - k + 1 : i + 1] = True
+
+    # 2. Dropout: any NaN (sensor stopped or occasional missing value)
+    out = out | (~np.isfinite(arr))
+    return out
+
+
+def long_nan_run_mask(glucose, dropout_min=30, prior_hr=1, interval_min=5):
+    """
+    Separate mask: long NaN runs (>= dropout_min) and the prior_hr before each.
+
+    When a NaN run is at least dropout_min (default 30 min), flag the entire run
+    and the prior_hr (default 1 hour) before the run starts—the lead-up can be
+    unreliable. Short NaN runs are not flagged by this mask (use dropout_flatline
+    for any NaN). Combine with other masks via OR in instability_mask.
+    """
+    arr = _as_array(glucose)
+    n = arr.size
+    is_nan = ~np.isfinite(arr)
+    k_dropout = max(1, int(dropout_min / interval_min))
+    k_prior = max(0, int(prior_hr * 60 / interval_min))
 
     out = np.zeros(n, dtype=bool)
-    for i in range(k - 1, n):
-        w = arr[i - k + 1 : i + 1]
-        if np.all(np.isfinite(w)) and np.nanmax(w) == np.nanmin(w):
-            out[i - k + 1 : i + 1] = True
+    run_start = None
+    for i in range(n + 1):
+        if i < n and is_nan[i]:
+            if run_start is None:
+                run_start = i
+        else:
+            if run_start is not None:
+                run_end = i
+                run_len = run_end - run_start
+                if run_len >= k_dropout:
+                    out[run_start:run_end] = True
+                    prior_start = max(0, run_start - k_prior)
+                    out[prior_start:run_start] = True
+                run_start = None
     return out
 
 
@@ -132,6 +178,8 @@ def instability_mask(
     low_threshold_mgdL=70,
     low_duration_hr=8,
     flatline_window_min=30,
+    dropout_min=30,
+    prior_hr=1,
     interval_min=5,
 ):
     """
@@ -152,6 +200,7 @@ def instability_mask(
         interval_min=interval_min,
     )
     m4 = dropout_flatline_mask(arr, window_min=flatline_window_min, interval_min=interval_min)
+    m5 = long_nan_run_mask(arr, dropout_min=dropout_min, prior_hr=prior_hr, interval_min=interval_min)
 
     # ensure same length (edge effects can differ by 1)
     def pad(b, size):
@@ -159,5 +208,5 @@ def instability_mask(
             return np.resize(b, size)
         return b[:size]
 
-    m1, m2, m3, m4 = (pad(m, n) for m in (m1, m2, m3, m4))
-    return (m1 | m2 | m3 | m4).astype(bool)
+    m1, m2, m3, m4, m5 = (pad(m, n) for m in (m1, m2, m3, m4, m5))
+    return (m1 | m2 | m3 | m4 | m5).astype(bool)

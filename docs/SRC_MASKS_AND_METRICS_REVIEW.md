@@ -65,31 +65,56 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ### 1.4 `dropout_flatline_mask(glucose, window_min=30, interval_min=5)`
 
-**Intent:** Flag “dropout” or sensor dropout where the value is stuck (e.g. repeated identical readings).
+**Intent:** Flag two patterns:
+
+1. **Flatline:** Repeated identical readings for 30+ min (sensor stuck on one value).
+2. **Dropout:** **Any** reading that is NaN. The occasional NaN between two numeric values is still dropout and is flagged. Every NaN is marked unstable.
 
 **Logic:**
-- Window = 30 min (6 readings).
-- If all values in the window are **exactly equal** (and finite), the **entire window** is marked `True`.
+- **Flatline:** Window = 30 min (6 readings). If all values in the window are **exactly equal** and finite, the **entire window** is marked `True`.
+- **Dropout:** `mask = mask | ~np.isfinite(glucose)` so every NaN (and inf) is marked `True`.
+
+**Session context:** Max session length depends on source device ID—see `max_session_days(device_id)` in `src.session`: **G7 → 10.5 days**, **G6 (and not G7) → 10 days**.
 
 **Choices you may want to change:**
-- **Exact equality:** Real CGM can have tiny float differences. You might want “flatline” = “all within X mg/dL” (e.g. range in window ≤ 1 or 2 mg/dL) instead of strict equality.
-- **Minimum duration:** 30 min is from the plan; some definitions use 15 min or 20 min.
-- **Handling NaN:** Right now we require `np.all(np.isfinite(w))`; a window with any NaN is not marked as flatline. You might want “all non-NaN values in window are identical” and still flag.
+- **Flatline—exact equality:** You might want “flatline” = “all within X mg/dL” (e.g. range ≤ 1 or 2 mg/dL) instead of strict equality.
+- **Flatline—minimum duration:** 30 min default; could be 15 or 20 min.
 
 ---
 
-### 1.5 `instability_mask(glucose, ...)`
+### 1.5 `long_nan_run_mask(glucose, dropout_min=30, prior_hr=1, interval_min=5)`
 
-**Intent:** Single combined “unstable” mask = union of all four heuristics.
+**Intent:** **Separate mask** for long NaN runs and the lead-up. When a NaN run is at least **dropout_min** (default 30 min), flag the entire run and the **prior_hr** (default 1 hour) **before** the run starts. Short NaN runs are not flagged by this mask—use `dropout_flatline_mask` for any NaN.
+
+**Logic:** Find contiguous NaN runs. If run length ≥ dropout_min (e.g. 6 points = 30 min @ 5 min), mark the **entire run** and the **prior_hr** (e.g. 12 points = 1 hr) before the run start as `True`.
+
+---
+
+### 1.6 `instability_mask(glucose, ...)`
+
+**Intent:** Single combined “unstable” mask = union of all five heuristics.
 
 **Logic:**
-- Calls the four masks above with the given parameters.
-- `instability_mask = local_variance | jump_spike | drift_window | dropout_flatline` (element-wise OR).
+- Calls the five masks above with the given parameters.
+- `instability_mask = local_variance | jump_spike | drift_window | dropout_flatline | long_nan_run` (element-wise OR).
 - Length is forced to match `glucose` (padding/trimming if a heuristic returns a different length).
 
 **Choices you may want to change:**
 - **Which heuristics are included:** You might want to turn off one (e.g. variance) or add new ones (e.g. “suspicious rate of change,” “out-of-physiologic-range”).
 - **Parameters:** All are keyword-only and passed through; defaults can be updated from your conventions.
+
+---
+
+### 1.7 Session helper: `max_session_days(device_id)` (`src/session.py`)
+
+**Intent:** Return maximum expected session length in days for a given source device ID. Use when flagging sessions that ended early (potential failure).
+
+**Logic:**
+- If `device_id` contains **"G7"** → **10.5 days**.
+- If `device_id` contains **"G6"** and not **"G7"** → **10 days**.
+- Otherwise → **None** (unknown device). Comparison is case-insensitive.
+
+**Usage:** When grouping by CGM session ID, compare actual session duration to `max_session_days(device_id)`; if duration < max, flag as possible early failure.
 
 ---
 
@@ -173,7 +198,8 @@ Once you specify which of these (and how you want them defined), they can be add
 | `local_variance_mask` | High short-term variance | window 30 min, threshold 95th %ile | |
 | `jump_spike_mask` | Single-step spike | 20 mg/dL per 5 min | |
 | `drift_window_mask` | Monotonic > 24 h OR below 70 for > 8 h | drift_duration_hr=24, low=70, low_duration_hr=8 | |
-| `dropout_flatline_mask` | Identical readings 30 min | exact equality, 30 min | |
+| `dropout_flatline_mask` | Flatline 30+ min OR any NaN (dropout) | window_min=30 | |
+| `long_nan_run_mask` | Long NaN run (≥30 min) + 1 hr prior | dropout_min=30, prior_hr=1 | |
 | `instability_mask` | OR of all four | all of the above | |
 | `compute_TIR` | % time in [70, 180] | low, high | |
 | `compute_TBR` | % time < 70 | low | |
