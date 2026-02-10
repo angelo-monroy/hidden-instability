@@ -51,7 +51,7 @@ def jitter_mask(glucose, window_min=30, min_sign_changes=2, interval_min=5):
     Flag periods with too much small oscillation (jitter)—many direction reversals
     even when individual steps are small (e.g. 5–10 mg/dL up and down).
 
-    Good CGM looks like a sequential line; jittery data oscillates around an
+    Good CGM data looks like a sequential line; jittery data oscillates around an
     imaginary average with no smooth trend. This mask counts sign changes in
     first differences over a window: high reversal count = scatter / no pattern,
     low = dotted line. Entire window is marked unstable when sign changes
@@ -96,7 +96,7 @@ def drift_window_mask(
 
     2. Below range for > low_duration_hr (default 8 h): glucose is below
        low_threshold_mgdL (default 70) and stays there for more than 8 hours.
-       Flagged as potential sensor drift (reading low) or prolonged hypo.
+       Flagged as potential sensor drift (reading low), overnight compression low, or prolonged hypo.
 
     Cost: monotonic check is O(n * window_length) with window = 24h of points;
     low run is O(n). For 30 days @ 5 min, ~2.5e6 ops for monotonic, negligible for low run.

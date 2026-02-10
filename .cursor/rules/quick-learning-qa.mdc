@@ -10,6 +10,7 @@ When the user asks a **short, quick question** about programming or the codebase
 1. **Keep answers brief** – a few sentences or a short paragraph. No long essays unless they ask for depth.
 2. **Teach, don’t just state** – give the "why" or the rule (e.g. PEP 257, readability) so they learn.
 3. **Tie to this project when relevant** – e.g. "In this repo we use `\"\"\"` for docstrings (PEP 257); that’s why you see double quotes in the Python functions."
+4. **When explaining Python slice/window indices** (e.g. `arr[i - k + 1 : i + 1]`), use the framing: **start index = right edge minus window size + 1** (so the window of length `k` ends at index `i`). This is especially helpful for users coming from R.
 
 ## Examples of the tone
 
