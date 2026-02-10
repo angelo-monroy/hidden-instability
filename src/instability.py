@@ -46,6 +46,38 @@ def jump_spike_mask(glucose, threshold_mgdL=20, interval_min=5):
     return diff > threshold_mgdL
 
 
+def jitter_mask(glucose, window_min=30, min_sign_changes=2, interval_min=5):
+    """
+    Flag periods with too much small oscillation (jitter)—many direction reversals
+    even when individual steps are small (e.g. 5–10 mg/dL up and down).
+
+    Good CGM looks like a sequential line; jittery data oscillates around an
+    imaginary average with no smooth trend. This mask counts sign changes in
+    first differences over a window: high reversal count = scatter / no pattern,
+    low = dotted line. Entire window is marked unstable when sign changes
+    >= min_sign_changes (default 2 in a 30-min window).
+    """
+    arr = _as_array(glucose)
+    n = arr.size
+    k = max(3, int(window_min / interval_min))  # need at least 3 points for 2 diffs
+    if n < k:
+        return np.zeros(n, dtype=bool)
+
+    out = np.zeros(n, dtype=bool)
+    for i in range(k - 1, n):
+        w = arr[i - k + 1 : i + 1]
+        if not np.all(np.isfinite(w)):
+            continue
+        d = np.diff(w)
+        if d.size < 2:
+            continue
+        # count direction reversals: sign change between consecutive diffs
+        sign_changes = np.sum((d[1:] * d[:-1]) < 0)
+        if sign_changes >= min_sign_changes:
+            out[i - k + 1 : i + 1] = True
+    return out
+
+
 def drift_window_mask(
     glucose,
     *,
@@ -174,6 +206,8 @@ def instability_mask(
     *,
     variance_threshold=None,
     jump_threshold_mgdL=20,
+    jitter_window_min=30,
+    min_sign_changes=2,
     drift_duration_hr=24,
     low_threshold_mgdL=70,
     low_duration_hr=8,
@@ -192,15 +226,21 @@ def instability_mask(
 
     m1 = local_variance_mask(arr, window_min=30, interval_min=interval_min, threshold=variance_threshold)
     m2 = jump_spike_mask(arr, threshold_mgdL=jump_threshold_mgdL, interval_min=interval_min)
-    m3 = drift_window_mask(
+    m3 = jitter_mask(
+        arr,
+        window_min=jitter_window_min,
+        min_sign_changes=min_sign_changes,
+        interval_min=interval_min,
+    )
+    m4 = drift_window_mask(
         arr,
         drift_duration_hr=drift_duration_hr,
         low_threshold_mgdL=low_threshold_mgdL,
         low_duration_hr=low_duration_hr,
         interval_min=interval_min,
     )
-    m4 = dropout_flatline_mask(arr, window_min=flatline_window_min, interval_min=interval_min)
-    m5 = long_nan_run_mask(arr, dropout_min=dropout_min, prior_hr=prior_hr, interval_min=interval_min)
+    m5 = dropout_flatline_mask(arr, window_min=flatline_window_min, interval_min=interval_min)
+    m6 = long_nan_run_mask(arr, dropout_min=dropout_min, prior_hr=prior_hr, interval_min=interval_min)
 
     # ensure same length (edge effects can differ by 1)
     def pad(b, size):
@@ -208,5 +248,5 @@ def instability_mask(
             return np.resize(b, size)
         return b[:size]
 
-    m1, m2, m3, m4, m5 = (pad(m, n) for m in (m1, m2, m3, m4, m5))
-    return (m1 | m2 | m3 | m4 | m5).astype(bool)
+    m1, m2, m3, m4, m5, m6 = (pad(m, n) for m in (m1, m2, m3, m4, m5, m6))
+    return (m1 | m2 | m3 | m4 | m5 | m6).astype(bool)

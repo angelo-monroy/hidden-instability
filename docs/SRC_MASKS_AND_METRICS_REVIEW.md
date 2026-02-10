@@ -42,7 +42,17 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 1.3 `drift_window_mask(glucose, *, drift_duration_hr=24, low_threshold_mgdL=70, low_duration_hr=8, interval_min=5)`
+### 1.3 `jitter_mask(glucose, window_min=30, min_sign_changes=2, interval_min=5)`
+
+**Intent:** Flag periods with **too much small oscillation (jitter)**—many direction reversals even when individual steps are small (e.g. 5–10 mg/dL up and down). Good CGM looks like a sequential line; jittery data oscillates around an imaginary average with no smooth trend (scatter vs. dotted line).
+
+**Logic:** In each rolling window (default 30 min = 6 points), compute first differences and count **sign changes** (direction reversals: diff[i]*diff[i+1] &lt; 0). If sign changes ≥ min_sign_changes (default 2), mark the **entire window** `True`. Requires all finite in window.
+
+**Choices you may want to change:** window_min (30 min), min_sign_changes (2), or use a ratio (e.g. sign changes per minute) instead of raw count.
+
+---
+
+### 1.4 `drift_window_mask(glucose, *, drift_duration_hr=24, low_threshold_mgdL=70, low_duration_hr=8, interval_min=5)`
 
 **Intent:** Flag two patterns that may indicate sensor drift or governance blind spots (not normal physiologic swings from insulin/carbs):
 
@@ -63,7 +73,7 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 1.4 `dropout_flatline_mask(glucose, window_min=30, interval_min=5)`
+### 1.5 `dropout_flatline_mask(glucose, window_min=30, interval_min=5)`
 
 **Intent:** Flag two patterns:
 
@@ -82,7 +92,7 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 1.5 `long_nan_run_mask(glucose, dropout_min=30, prior_hr=1, interval_min=5)`
+### 1.6 `long_nan_run_mask(glucose, dropout_min=30, prior_hr=1, interval_min=5)`
 
 **Intent:** **Separate mask** for long NaN runs and the lead-up. When a NaN run is at least **dropout_min** (default 30 min), flag the entire run and the **prior_hr** (default 1 hour) **before** the run starts. Short NaN runs are not flagged by this mask—use `dropout_flatline_mask` for any NaN.
 
@@ -92,11 +102,11 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ### 1.6 `instability_mask(glucose, ...)`
 
-**Intent:** Single combined “unstable” mask = union of all five heuristics.
+**Intent:** Single combined “unstable” mask = union of all six heuristics.
 
 **Logic:**
-- Calls the five masks above with the given parameters.
-- `instability_mask = local_variance | jump_spike | drift_window | dropout_flatline | long_nan_run` (element-wise OR).
+- Calls the six masks above with the given parameters.
+- `instability_mask = local_variance | jump_spike | jitter | drift_window | dropout_flatline | long_nan_run` (element-wise OR).
 - Length is forced to match `glucose` (padding/trimming if a heuristic returns a different length).
 
 **Choices you may want to change:**
@@ -105,7 +115,7 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 1.7 Session helper: `max_session_days(device_id)` (`src/session.py`)
+### 1.8 Session helper: `max_session_days(device_id)` (`src/session.py`)
 
 **Intent:** Return maximum expected session length in days for a given source device ID. Use when flagging sessions that ended early (potential failure).
 
@@ -197,10 +207,11 @@ Once you specify which of these (and how you want them defined), they can be add
 |----------|---------|-----------------|-------------|
 | `local_variance_mask` | High short-term variance | window 30 min, threshold 95th %ile | |
 | `jump_spike_mask` | Single-step spike | 20 mg/dL per 5 min | |
+| `jitter_mask` | Too many direction reversals (small oscillation) | window_min=30, min_sign_changes=2 | |
 | `drift_window_mask` | Monotonic > 24 h OR below 70 for > 8 h | drift_duration_hr=24, low=70, low_duration_hr=8 | |
 | `dropout_flatline_mask` | Flatline 30+ min OR any NaN (dropout) | window_min=30 | |
 | `long_nan_run_mask` | Long NaN run (≥30 min) + 1 hr prior | dropout_min=30, prior_hr=1 | |
-| `instability_mask` | OR of all four | all of the above | |
+| `instability_mask` | OR of all six | all of the above | |
 | `compute_TIR` | % time in [70, 180] | low, high | |
 | `compute_TBR` | % time < 70 | low | |
 | `compute_TAR` | % time > 180 | high | |
