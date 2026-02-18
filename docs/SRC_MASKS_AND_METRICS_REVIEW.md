@@ -1,6 +1,6 @@
 # Review: `src` masks and CGM metrics
 
-Walkthrough of every function so you can align with CGM conventions and add metrics. Your feedback will drive changes.
+Walkthrough of every function
 
 ---
 
@@ -130,7 +130,7 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ## 2. CGM metrics (`src/metrics.py`)
 
-**Convention:** All metrics are **fractions of (used) time** in [0, 1]. If a `mask` is provided, masked indices are removed from **both** numerator and denominator (we compute metrics over “stable” time only when masking).
+**Convention:** TIR, TBR, and TAR are **fractions of (used) time** in [0, 1]. GMI is a **scalar** (estimated A1C-equivalent in %). Summary metrics return a **dict** of scalars (mean, SD, CV, median, min, max). If a `mask` is provided, masked indices are removed from computation (we compute metrics over “stable” time only when masking).
 
 ---
 
@@ -177,7 +177,47 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ---
 
-### 2.4 Relationship between TIR, TBR, TAR
+### 2.4 `compute_GMI(glucose, mask=None)`
+
+**Intent:** Glucose Management Indicator: estimated A1C-equivalent (%) from mean glucose (mg/dL). If a mask is provided, masked indices are omitted; mean is over used, finite values only.
+
+**Logic:**
+- Use `_masked_series(glucose, mask)` and restrict to **finite and used** indices (`valid = np.isfinite(arr) & use`).
+- If no valid values, return `np.nan`.
+- Otherwise: **mean_glucose** = mean of `arr[valid]` (mg/dL). **GMI (%)** = 3.31 + 0.02392 × mean_glucose (Bergenstal et al. formula).
+- Returns a single float (percent, e.g. 7.0 for 7%).
+
+**Choices you may want to change:**
+- **Formula:** Default is 3.31 + 0.02392 × mean (mg/dL). Alternative formulas exist (e.g. different coefficients or mmol/L); you could add a parameter or switch if needed.
+- **Units:** Input is assumed mg/dL; if you use mmol/L, the formula coefficients differ.
+
+---
+
+### 2.5 `compute_summary_metrics(glucose, mask=None)`
+
+**Intent:** Summary statistics over used, finite glucose values: mean, SD, CV, median, min, max. If a mask is provided, masked indices are omitted (same convention as TIR/TBR/TAR).
+
+**Logic:**
+- Use `_masked_series(glucose, mask)` to get `arr` and `use`.
+- Restrict to **finite and used** indices (`valid = np.isfinite(arr) & use`).
+- If no valid values, return a dict with all keys set to `np.nan`.
+- Otherwise compute on `arr[valid]`:
+  - **mean:** `np.mean(x)`
+  - **sd:** `np.std(x, ddof=1)` (sample standard deviation)
+  - **cv:** `sd / mean` (coefficient of variation as ratio). If mean is 0, returns `np.nan`.
+  - **median:** `np.median(x)`
+  - **min:** `np.min(x)`
+  - **max:** `np.max(x)`
+- Returns a **dict** with keys: `mean`, `sd`, `cv`, `median`, `min`, `max`.
+
+**Choices you may want to change:**
+- **CV:** Currently ratio (SD/mean); you may want CV% (e.g. 100 × SD/mean) as an additional key or parameter.
+- **SD:** Currently sample SD (`ddof=1`); you may prefer population SD (`ddof=0`) for reporting.
+- **Return type:** Dict is easy to use from Python and R (reticulate); could add a pandas Series or named tuple variant if needed.
+
+---
+
+### 2.6 Relationship between TIR, TBR, TAR
 
 - Currently: **TIR + TBR + TAR** = 1 (for every unmasked finite reading, exactly one of “in range,” “below,” “above”).
 - Bounds: TIR uses [70, 180]; TBR uses <70; TAR uses >180. So no gap and no overlap.
@@ -186,18 +226,11 @@ Walkthrough of every function so you can align with CGM conventions and add metr
 
 ## 3. Metrics not yet in `src`
 
-Placeholder for ones you want to add. Common CGM metrics you might introduce:
+**Already in `src`:** TIR, TBR, TAR, **GMI** (via `compute_GMI`), and **summary metrics** (mean, SD, CV, median, min, max) via `compute_summary_metrics`.
 
-- **GMI** (glucose management indicator) – e.g. formula from mean glucose.
-- **CV** (coefficient of variation) – std / mean, often as %.
-- **Mean glucose** (over unmasked / used time).
-- **Median glucose.**
 - **J-index, M-value, etc.** – other composite metrics.
-- **Time in specific bands** – e.g. 70–140, 54–70, >250.
 - **LBGI / HBGI** (low / high blood glucose indices) – risk indices from Clarke et al.
-- **Event-based:** e.g. number or rate of excursions, prolonged hypoglycemia events (e.g. &gt;15 min below 54).
-
-Once you specify which of these (and how you want them defined), they can be added to `src/metrics.py` with the same masking convention.
+- **Event-based:** e.g. number or rate of excursions or spikes, prolonged hypoglycemia events (e.g. &gt;15 min below 54).
 
 ---
 
@@ -215,7 +248,7 @@ Once you specify which of these (and how you want them defined), they can be add
 | `compute_TIR` | % time in [70, 180] | low, high | |
 | `compute_TBR` | % time < 70 | low | |
 | `compute_TAR` | % time > 180 | high | |
+| `compute_GMI` | Estimated A1C-equivalent (%) from mean glucose | mask | |
+| `compute_summary_metrics` | mean, SD, CV, median, min, max (dict) | mask | |
 
 ---
-
-**Next step:** Tell me what you want changed (definitions, thresholds, which indices get flagged, or new metrics), and I’ll update `src` and this doc accordingly.

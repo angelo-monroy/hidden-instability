@@ -1,7 +1,8 @@
 """
-CGM metrics: TIR, TBR, TAR, summary (mean, SD, CV, median, min, max).
+CGM metrics: TIR, TBR, TAR, GMI, summary (mean, SD, CV, median, min, max).
 Optional mask to exclude unstable segments.
 Conventions: TIR 70–180 mg/dL, TBR <70, TAR >180.
+GMI: estimated A1C-equivalent (%) from mean glucose (mg/dL).
 """
 
 import numpy as np
@@ -61,6 +62,20 @@ def compute_TAR(glucose, mask=None, high=180):
         return np.nan
     above = (arr > high) & use
     return np.sum(above) / np.sum(use)
+
+
+def compute_GMI(glucose, mask=None):
+    """
+    Glucose Management Indicator: estimated A1C-equivalent (%) from mean glucose (mg/dL).
+    Formula: GMI = 3.31 + 0.02392 × mean_glucose (Bergenstal et al.).
+    If mask is provided, excluded indices are omitted; mean is over used, finite values only.
+    """
+    arr, use = _masked_series(glucose, mask)
+    valid = np.isfinite(arr) & use
+    if not np.any(valid):
+        return np.nan
+    mean_glucose = float(np.mean(arr[valid]))
+    return 3.31 + 0.02392 * mean_glucose
 
 
 def compute_summary_metrics(glucose, mask=None):
