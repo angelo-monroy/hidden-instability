@@ -12,7 +12,7 @@ from .instability import (
     long_nan_run_mask,
     instability_mask,
 )
-from .metrics import compute_TIR, compute_TBR, compute_TAR
+from .metrics import compute_TIR, compute_TBR, compute_TAR, compute_summary_metrics
 from .session import max_session_days
 
 __all__ = [
@@ -26,5 +26,6 @@ __all__ = [
     "compute_TIR",
     "compute_TBR",
     "compute_TAR",
+    "compute_summary_metrics",
     "max_session_days",
 ]

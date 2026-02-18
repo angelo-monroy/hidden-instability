@@ -1,5 +1,6 @@
 """
-CGM metrics: TIR, TBR, TAR. Optional mask to exclude unstable segments.
+CGM metrics: TIR, TBR, TAR, summary (mean, SD, CV, median, min, max).
+Optional mask to exclude unstable segments.
 Conventions: TIR 70–180 mg/dL, TBR <70, TAR >180.
 """
 
@@ -60,3 +61,34 @@ def compute_TAR(glucose, mask=None, high=180):
         return np.nan
     above = (arr > high) & use
     return np.sum(above) / np.sum(use)
+
+
+def compute_summary_metrics(glucose, mask=None):
+    """
+    Summary statistics over used, finite glucose values: mean, SD, CV, median, min, max.
+    If mask is provided, excluded indices are omitted. CV = SD/mean (ratio); NaN if mean is 0.
+    Returns a dict with keys: mean, sd, cv, median, min, max.
+    """
+    arr, use = _masked_series(glucose, mask)
+    valid = np.isfinite(arr) & use
+    if not np.any(valid):
+        return {
+            "mean": np.nan,
+            "sd": np.nan,
+            "cv": np.nan,
+            "median": np.nan,
+            "min": np.nan,
+            "max": np.nan,
+        }
+    x = arr[valid]
+    mean = float(np.mean(x))
+    sd = float(np.std(x, ddof=1))
+    cv = sd / mean if mean != 0 else np.nan
+    return {
+        "mean": mean,
+        "sd": sd,
+        "cv": cv,
+        "median": float(np.median(x)),
+        "min": float(np.min(x)),
+        "max": float(np.max(x)),
+    }
