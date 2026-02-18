@@ -1,6 +1,6 @@
 """
 CGM metrics: TIR, TBR, TAR. Optional mask to exclude unstable segments.
-Conventions: TIR 70–180 mg/dL, TBR <70, TAR >180 (ADA-style).
+Conventions: TIR 70–180 mg/dL, TBR <70, TAR >180.
 """
 
 import numpy as np
