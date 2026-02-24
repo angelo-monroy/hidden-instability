@@ -59,6 +59,11 @@ cgm <- df |>
     filter(`Event Type` == "EGV") |>
     drop_empty_columns()
 
+old_cgm_colnames <- colnames(cgm)
+colnames(cgm) <- c("index", "ts", "type", "subtype", "device", "egv", "device_tick", "device_id")
+
+
+
 calibrations <- df |>
     filter(`Event Type` == "Calibration") |>
     drop_empty_columns()
@@ -66,3 +71,28 @@ calibrations <- df |>
 
 # EDA
 
+```{r}
+#| label: basic-sum
+
+data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
+
+```
+
+## Summary
+
+* Time Period: `{r} format(min(cgm$ts), "%B %d, %Y")` - `{r} format(max(cgm$ts), "%B %d, %Y")`
+* Device: `{r} unique(cgm$device)`
+* Data Availability: `{r} data_completion`
+
+## Device Metrics
+
+```{r}
+#| label: device metrics
+
+nrow(calibrations)
+
+```
+
+## Behavioral Metrics
+
+* There were 
