@@ -1,0 +1,57 @@
+---
+author:
+    name: "Angelo Monroy"
+date: today
+title: "Personal CGM Data EDA"
+format: html
+---
+
+# Intro
+
+Performing EDA of personal CGM data for use in hidden-instability.
+
+Data was sourced from Dexcom Clarity app January 23, 2026.
+
+```{r}
+#| label: libraries
+#| message: false
+
+library(readr)
+library(dplyr)
+library(tidyr)
+```
+
+# EDA
+
+```{r}
+#| label: load-raw-local
+#| message: false
+
+# First CSV in data/raw (e.g. Clarity export)
+raw_path <- list.files("data/raw", pattern = "\\.csv$", full.names = TRUE)
+if (length(raw_path) == 0) stop("No CSV found in data/raw")
+df <- read_csv(raw_path[1], show_col_types = FALSE)
+problems(df)
+```
+
+CSV had 17 rows missing NA for last column. Manually fixed data and reread csv.
+
+```{r}
+#| label: reload-raw-local
+#| message: false
+
+df <- read_csv(raw_path[1], show_col_types = FALSE)
+```
+
+```{r}
+#| label: tidy-dfs
+
+meals <- df |>
+    filter(`Event Type` == "Meal")
+
+cgm <- df |>
+    filter(`Event Type` == "EGV")
+
+calibrations <- df |>
+    filter(`Event Type` == "Calibration")
+```
