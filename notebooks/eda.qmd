@@ -82,7 +82,7 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 
 * Time Period: `{r} format(min(cgm$ts), "%B %d, %Y")` - `{r} format(max(cgm$ts), "%B %d, %Y")`
 * Device: `{r} unique(cgm$device)`
-* Data Availability: `{r} data_completion`
+* Data Availability: `{r} pct(data_completion, 1)`
 
 ## Device Metrics
 
