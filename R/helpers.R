@@ -1,5 +1,6 @@
-# Helpers for notebooks. From project root: source("R/helpers.R")
-# Or in Quarto: source(here::here("R/helpers.R")) if using the here package.
+# Helpers for notebooks.
+# In a .qmd under notebooks/: source("../R/helpers.R") (no here needed).
+# From R with project root as working dir: source("R/helpers.R").
 
 #' Drop columns that are entirely NA or NULL
 #'
@@ -15,5 +16,5 @@
 #' drop_empty_columns(d)  # drops column b
 drop_empty_columns <- function(df) {
   stopifnot(is.data.frame(df))
-  dplyr::select(df, where(function(x) !all(is.na(x))))
+  dplyr::select(df, dplyr::where(function(x) !all(is.na(x))))
 }

@@ -10,8 +10,6 @@ format: html
 
 Performing EDA of personal CGM data for use in hidden-instability.
 
-Data was sourced from Dexcom Clarity app January 23, 2026.
-
 ```{r}
 #| label: libraries
 #| message: false
@@ -19,9 +17,16 @@ Data was sourced from Dexcom Clarity app January 23, 2026.
 library(readr)
 library(dplyr)
 library(tidyr)
+
+# interactive source
+# source("R/helpers.R")
+# render source
+source("../R/helpers.R")
 ```
 
-# EDA
+# Data
+
+Data was sourced from Dexcom Clarity app January 23, 2026.
 
 ```{r}
 #| label: load-raw-local
@@ -47,11 +52,17 @@ df <- read_csv(raw_path[1], show_col_types = FALSE)
 #| label: tidy-dfs
 
 meals <- df |>
-    filter(`Event Type` == "Meal")
+    filter(`Event Type` == "Meal") |>
+    drop_empty_columns()
 
 cgm <- df |>
-    filter(`Event Type` == "EGV")
+    filter(`Event Type` == "EGV") |>
+    drop_empty_columns()
 
 calibrations <- df |>
-    filter(`Event Type` == "Calibration")
+    filter(`Event Type` == "Calibration") |>
+    drop_empty_columns()
 ```
+
+# EDA
+
