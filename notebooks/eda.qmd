@@ -8,7 +8,7 @@ format: html
 
 # Intro
 
-Performing EDA of personal CGM data for use in hidden-instability.
+Performing EDA of personal CGM data for use in hidden-instability. Dexcom CGM G7 is an FDA-approved medical device that continuously monitors glucose via measuring of interstitial fluid. It lasts for 10 days + 12 hour grace period.
 
 ```{r}
 #| label: libraries
@@ -83,16 +83,9 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 * Time Period: `{r} format(min(cgm$ts), "%B %d, %Y")` - `{r} format(max(cgm$ts), "%B %d, %Y")`
 * Device: `{r} unique(cgm$device)`
 * Data Availability: `{r} pct(data_completion, 1)`
+* CGMs Used in Period: `{r length(unique(cgm$device_id))}`
+* Manual BGM Calibrations: `{r nrow(calibrations)}`
+* Meal Entries: `{r nrow(meals)}`
 
-## Device Metrics
+## Glucose Metrics
 
-```{r}
-#| label: device metrics
-
-nrow(calibrations)
-
-```
-
-## Behavioral Metrics
-
-* There were 
