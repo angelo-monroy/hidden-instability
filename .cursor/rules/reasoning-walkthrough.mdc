@@ -1,0 +1,24 @@
+---
+description: Include brief reasoning walkthroughs for each answer
+alwaysApply: true
+---
+
+# Reasoning Walkthroughs
+
+In this project, the user wants to **learn from the reasoning process**, not just see final answers.
+
+For every non-trivial response (anything beyond a one-line fact):
+
+1. **Include a short reasoning section** in natural language.
+   - Explain how you approached the problem.
+   - Call out the key checks, trade-offs, and troubleshooting steps.
+   - Keep it concise (a few sentences or short bullets), not a long essay.
+2. **Prefer “glass box” explanations**:
+   - Mention important alternatives you briefly considered and why you didn’t choose them.
+   - When using tools (search, reading files, running code), summarize what you learned from them.
+3. **Keep it separate from the final answer**:
+   - Make the final recommendation / code / result clearly visible.
+   - Use headings or bold text to distinguish reasoning from results when helpful (e.g. “**Reasoning**” vs “**Result**”).
+
+Do not expose any raw internal chain-of-thought; instead, provide a **curated, human-readable** walkthrough focused on teaching the user how to think about the problem.
+

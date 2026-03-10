@@ -119,10 +119,59 @@ if cgm_py.shape[1] == 8:
         "device_tick",
         "device_id",
     ]
+
+# render source
+from src import (
+    compute_TIR,
+    compute_TBR,
+    compute_TAR,
+    compute_GMI,
+    compute_summary_metrics,
+)
 ```
 
-## SQL
+## Hourly
 
+```{python}
+
+#| label: hourly-metrics
+# Ensure timestamp is datetime and sorted
+cgm_py["ts"] = pd.to_datetime(cgm_py["ts"])
+cgm_py = cgm_py.sort_values("ts")
+
+# Define how to compute metrics for one hour's worth of glucose
+def _hourly_metrics(group):
+    glucose = group["egv"].to_numpy(dtype=float)
+
+    summary = compute_summary_metrics(glucose)
+
+    return pd.Series(
+        {
+            "n_points": glucose.size,
+            "mean": summary["mean"],
+            "sd": summary["sd"],
+            "cv": summary["cv"],
+            "median": summary["median"],
+            "min": summary["min"],
+            "max": summary["max"],
+            "TIR": compute_TIR(glucose),
+            "TBR": compute_TBR(glucose),
+            "TAR": compute_TAR(glucose),
+            "GMI": compute_GMI(glucose),
+        }
+    )
+
+# Group by hour and compute metrics
+hourly_metrics_py = (
+    cgm_py
+    .groupby(pd.Grouper(key="ts", freq="1h"))
+    .apply(_hourly_metrics)
+    .reset_index()
+)
+
+hourly_metrics_py.head()
+
+```
 
 
 # EDA
