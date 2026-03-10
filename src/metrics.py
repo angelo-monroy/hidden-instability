@@ -8,7 +8,23 @@ GMI: estimated A1C-equivalent (%) from mean glucose (mg/dL).
 import numpy as np
 
 
+def _normalize_glucose(series):
+    """
+    Coerce CGM glucose values into numeric form.
+
+    Dexcom exports may encode very low glucose as the string "Low".
+    Treat those as 39 mg/dL so we can safely convert to float.
+    """
+    # Pandas Series / array-like with .replace
+    if hasattr(series, "replace"):
+        return series.replace("Low", 39)
+
+    # Generic iterable (list, numpy array of objects/strings, etc.)
+    return [39 if x == "Low" else x for x in series]
+
+
 def _as_array(series):
+    series = _normalize_glucose(series)
     arr = np.asarray(series, dtype=float)
     if arr.ndim != 1:
         raise ValueError("Expected 1D glucose series")
