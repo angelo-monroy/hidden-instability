@@ -17,6 +17,7 @@ Performing EDA of personal CGM data for use in hidden-instability. Dexcom CGM G7
 library(readr)
 library(dplyr)
 library(tidyr)
+library(reticulate)
 
 # interactive source
 # source("R/helpers.R")
@@ -27,6 +28,8 @@ source("../R/helpers.R")
 # Data
 
 Data was sourced from Dexcom Clarity app January 23, 2026.
+
+## R
 
 ```{r}
 #| label: load-raw-local
@@ -69,6 +72,59 @@ calibrations <- df |>
     drop_empty_columns()
 ```
 
+## Python
+
+Reload dataset with Python for glycemic analysis
+
+```{python}
+#| label: r-df-to-python
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# Ensure the project root (one level up from notebooks/) is on the Python path
+root = Path.cwd()
+
+# Load the same raw CSV used in the R chunks
+raw_files = list((root / "data" / "raw").glob("*.csv"))
+if not raw_files:
+    raise FileNotFoundError("No CSV found in ../data/raw")
+
+df_py = pd.read_csv(raw_files[0])
+
+# Drop columns that are entirely NA (all missing), similar to drop_empty_columns()
+df_py = df_py.dropna(axis=1, how="all")
+
+# Split into EGV (CGM), meals, and calibrations, mirroring the R data frames
+meals_py = df_py[df_py["Event Type"] == "Meal"].copy()
+cgm_py = df_py[df_py["Event Type"] == "EGV"].copy()
+calibrations_py = df_py[df_py["Event Type"] == "Calibration"].copy()
+
+# Drop any all-NA columns post-filter as well
+meals_py = meals_py.dropna(axis=1, how="all")
+cgm_py = cgm_py.dropna(axis=1, how="all")
+calibrations_py = calibrations_py.dropna(axis=1, how="all")
+
+# Align CGM column names with the R pipeline when the width matches
+if cgm_py.shape[1] == 8:
+    cgm_py.columns = [
+        "index",
+        "ts",
+        "type",
+        "subtype",
+        "device",
+        "egv",
+        "device_tick",
+        "device_id",
+    ]
+```
+
+## SQL
+
+
+
 # EDA
 
 ```{r}
@@ -87,5 +143,32 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 * Manual BGM Calibrations: `{r nrow(calibrations)}`
 * Meal Entries: `{r nrow(meals)}`
 
-## Glucose Metrics
+## Hourly Analysis
 
+
+
+# Glucose Analysis
+
+```{python}
+#| label: glyc-metrics
+from src import (
+    compute_TIR,
+    compute_TBR,
+    compute_TAR,
+    compute_GMI,
+    compute_summary_metrics,
+)
+
+# Use the CGM glucose values as a 1D NumPy array
+glucose = cgm_py["egv"].to_numpy(dtype=float)
+
+metrics_unmasked = {
+    "TIR": compute_TIR(glucose),
+    "TBR": compute_TBR(glucose),
+    "TAR": compute_TAR(glucose),
+    "GMI": compute_GMI(glucose),
+    "summary": compute_summary_metrics(glucose),
+}
+
+metrics_unmasked
+```
