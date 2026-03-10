@@ -27,11 +27,12 @@ def make_hourly_metrics(cgm_py: pd.DataFrame) -> pd.DataFrame:
     cgm_py = cgm_py.sort_values("ts")
 
     def _hourly_metrics(group: pd.DataFrame) -> pd.Series:
-        glucose = group["egv"].to_numpy(dtype=float)
+        # Pass the raw Series through; metrics functions normalize "Low" -> 39.
+        glucose = group["egv"]
         summary = compute_summary_metrics(glucose)
         return pd.Series(
             {
-                "n_points": glucose.size,
+                "n_points": int(glucose.shape[0]),
                 "mean": summary["mean"],
                 "sd": summary["sd"],
                 "cv": summary["cv"],

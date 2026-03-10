@@ -130,18 +130,21 @@ from src import (
 )
 ```
 
-## Hourly
+## Hourly Summarizing
 
 ```{python}
 
 #| label: hourly-metrics
+import importlib
+import src.hourly
+
+# Reload so edits to src/hourly.py take effect without restarting
+importlib.reload(src.hourly)
 from src.hourly import make_hourly_metrics
 
 hourly_metrics_py = make_hourly_metrics(cgm_py)
 hourly_metrics_py.head()
-
 ```
-
 
 # EDA
 
@@ -161,11 +164,11 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 * Manual BGM Calibrations: `{r nrow(calibrations)}`
 * Meal Entries: `{r nrow(meals)}`
 
-## Hourly Analysis
+## Visualizations
 
 
 
-# Glucose Analysis
+## Glycemic Analysis
 
 ```{python}
 #| label: glyc-metrics
