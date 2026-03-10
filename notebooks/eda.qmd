@@ -176,37 +176,40 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 
 ```{r}
 
-# dataset
-hourly_df <- py$hour_of_day_metrics_py |>
-  dplyr::mutate(
-    hour_posix = as.POSIXct(
-      sprintf("1900-01-01 %02d:00:00", hour),
-      format = "%Y-%m-%d %H:%M:%S",
-      tz = "PST"
-    )
-  )
+hourly_df <- as.data.frame(reticulate::py_to_r(py$hour_of_day_metrics_py))
 
-# background
-# Define regions: 
-# Region 1: x from 0 to 7.5, color 'lightgreen'
-# Region 2: x from 7.5 to 16, color 'salmon'
-rects <- data.frame(ystart = seq(39,70,181), yend = seq(69,180,400), col = c("High", "In Range","Low"))
+hourly_df$hour <- as.integer(hourly_df$hour)
+hourly_df$hour_label <- format(
+  as.POSIXct(sprintf("2000-01-01 %02d:00:00", hourly_df$hour),
+             format = "%Y-%m-%d %H:%M:%S",
+             tz = "America/Los_Angeles"),
+  "%I:%M %p"
+)
 
+rects <- data.frame(
+  ystart = c(40, 70, 180),
+  yend   = c(70, 180, 300),
+  col    = c("Low", "In Range", "High")
+)
 
-# plot
-ggplot() +
-  geom_rect(data = rects, aes(ymin = ystart, ymax = yend, xmin = -Inf, xmax = Inf, fill = col), alpha = 0.4) +
-  geom_line(hourly_df, aes(x = hour_posix, y = mean)) +
-  scale_x_datetime(date_labels = "%I:%M %p") +
-  scale_y_continuous(limits = c(39, 300),
-    breaks = c(40, 70, 100, 120, 150, 200, 250, 300)) +
-  geom_hline(yintercept = 70, linetype = "dashed") +
-  geom_hline(yintercept = 180, linetype = "dashed") +
-  geom_hline(yintercept = 250, linetype = "dashed") +
-  labs(x = "Hour of Day",
-       y = "Mean Blood Glucose Mg/Dl",
-       title = "Mean Glucose by Hour")
-
+ggplot(hourly_df, aes(x = factor(hour, labels = hour_label), y = mean)) +
+  geom_rect(
+    data = rects,
+    aes(ymin = ystart, ymax = yend, xmin = -Inf, xmax = Inf, fill = col),
+    inherit.aes = FALSE,
+    alpha = 0.4
+  ) +
+  geom_line(group = 1) +
+  scale_y_continuous(
+    limits = c(40, 300),
+    breaks = c(40, 70, 100, 120, 150, 200, 250, 300)
+  ) +
+  labs(
+    x = "Hour of Day",
+    y = "Mean Blood Glucose Mg/dL",
+    title = "Mean Glucose by Hour"
+  ) +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
 ```
 
 ## Glycemic Analysis
