@@ -214,63 +214,6 @@ ggplot(hourly_df, aes(x = factor(hour, labels = hour_label), y = mean)) +
 ```
 
 
-```{r}
-# Bring Python df into R
-hourly_dow_df <- as.data.frame(py$hour_dow_metrics_py)
-
-# Ensure types are what we want
-hourly_dow_df <- hourly_dow_df |>
-  mutate(
-    hour = as.integer(hour),
-    # Pretty hour label like "12:00 PM"
-    hour_label = format(
-      as.POSIXct(
-        sprintf("2000-01-01 %02d:00:00", hour),
-        format = "%Y-%m-%d %H:%M:%S",
-        tz = "America/Los_Angeles"
-      ),
-      "%I:%M %p"
-    ),
-    # Order weekdays sensibly
-    day_of_week = factor(
-      day_of_week,
-      levels = c("Monday", "Tuesday", "Wednesday", "Thursday",
-                 "Friday", "Saturday", "Sunday")
-    )
-  )
-
-# Background 
-rects <- data.frame(
-  ystart = c(40, 70, 180),
-  yend   = c(70, 180, 300),
-  Region    = c("Low", "In Range", "High")
-)
-
-ggplot(hourly_dow_df,
-       aes(x = hour_label, y = mean, group = 1)) +
-  geom_rect(
-    data = rects,
-    aes(ymin = ystart, ymax = yend, xmin = -Inf, xmax = Inf, fill = Region),
-    inherit.aes = FALSE,
-    alpha = 0.4
-  ) +
-  geom_smooth() +
-  facet_wrap(~ day_of_week, ncol = 1) + 
-  scale_y_continuous(
-    limits = c(40, 300),
-    breaks = c(40, 70, 100, 120, 150, 200, 250, 300)
-  ) +
-  geom_hline(yintercept = 70,  linetype = "dashed") +
-  geom_hline(yintercept = 180, linetype = "dashed") +
-  geom_hline(yintercept = 250, linetype = "dashed") +
-  labs(
-    x = "Hour of Day",
-    y = "Mean Blood Glucose Mg/dL",
-    title = "Mean Glucose by Hour, by Day of Week"
-  ) +
-   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
-```
-
 ## Glycemic Analysis
 
 ```{python}
@@ -283,8 +226,8 @@ from src import (
     compute_summary_metrics,
 )
 
-# Use the CGM glucose values as a 1D NumPy array
-glucose = cgm_py["egv"].to_numpy(dtype=float)
+# Pass raw EGV column; src/metrics._normalize_glucose() handles "Low"/"High" before conversion
+glucose = cgm_py["egv"]
 
 metrics_unmasked = {
     "TIR": compute_TIR(glucose),
