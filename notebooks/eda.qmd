@@ -229,12 +229,24 @@ from src import (
 # Pass raw EGV column; src/metrics._normalize_glucose() handles "Low"/"High" before conversion
 glucose = cgm_py["egv"]
 
-metrics_unmasked = {
+_raw = {
     "TIR": compute_TIR(glucose),
     "TBR": compute_TBR(glucose),
     "TAR": compute_TAR(glucose),
     "GMI": compute_GMI(glucose),
     "summary": compute_summary_metrics(glucose),
+}
+
+# Round for display: TIR, TBR, TAR, GMI → 2 decimals; summary values → integers
+def _round_summary(d):
+    return {k: int(round(v, 0)) if np.isfinite(v) else v for k, v in d.items()}
+
+metrics_unmasked = {
+    "TIR": round(_raw["TIR"], 2),
+    "TBR": round(_raw["TBR"], 2),
+    "TAR": round(_raw["TAR"], 2),
+    "GMI": round(_raw["GMI"], 2),
+    "summary": _round_summary(_raw["summary"]),
 }
 
 metrics_unmasked
