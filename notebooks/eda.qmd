@@ -252,6 +252,10 @@ metrics_unmasked = {
 metrics_unmasked
 ```
 
+# Masking Analysis
+
+
+
 # References
 
 Cichosz SL, Xylander AAP. A Conditional Generative Adversarial Network for Synthesis of Continuous Glucose Monitoring Signals. J Diabetes Sci Technol. 2021 May 30:19322968211014255. doi: 10.1177/19322968211014255. Epub ahead of print. PMID: 34056935
