@@ -19,13 +19,6 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
-library(reticulate)
-
-# Use project venv so Python chunks see pandas, numpy, etc. (cwd may be project root or notebooks/)
-venv_path <- if (dir.exists(".venv")) ".venv" else "../.venv"
-if (dir.exists(venv_path)) {
-  reticulate::use_virtualenv(venv_path, required = TRUE)
-}
 
 # interactive source
 # source("R/helpers.R")
@@ -81,109 +74,17 @@ calibrations <- df |>
     drop_empty_columns()
 ```
 
-## Python
-
-Reload dataset with Python for glycemic analysis
-
-```{python}
-#| label: r-df-to-python
-import sys
-from pathlib import Path
-
-# Non-interactive backend so render doesn't hang waiting for a display
-import matplotlib
-matplotlib.use("Agg")
-
-import numpy as np
-import pandas as pd
-
-# Project root: cwd when run from root, or parent when run from notebooks/
-root = Path.cwd()
-raw_dir = root / "data" / "raw"
-if not raw_dir.exists():
-    root = root.parent
-    raw_dir = root / "data" / "raw"
-if not raw_dir.exists():
-    raise FileNotFoundError("No data/raw folder found from project root or notebooks/")
-
-# Ensure local src package is importable (do not pip install the PyPI package "src")
-if str(root) not in sys.path:
-    sys.path.insert(0, str(root))
-
-# Load the same raw CSV used in the R chunks
-raw_files = list(raw_dir.glob("*.csv"))
-if not raw_files:
-    raise FileNotFoundError("No CSV found in data/raw")
-
-df_py = pd.read_csv(raw_files[0])
-
-# Drop columns that are entirely NA (all missing), similar to drop_empty_columns()
-df_py = df_py.dropna(axis=1, how="all")
-
-# Split into EGV (CGM), meals, and calibrations, mirroring the R data frames
-meals_py = df_py[df_py["Event Type"] == "Meal"].copy()
-cgm_py = df_py[df_py["Event Type"] == "EGV"].copy()
-calibrations_py = df_py[df_py["Event Type"] == "Calibration"].copy()
-
-# Drop any all-NA columns post-filter as well
-meals_py = meals_py.dropna(axis=1, how="all")
-cgm_py = cgm_py.dropna(axis=1, how="all")
-calibrations_py = calibrations_py.dropna(axis=1, how="all")
-
-# Align column names with the R pipeline when the width matches
-if cgm_py.shape[1] == 8:
-    cgm_py.columns = [
-        "index",
-        "ts",
-        "type",
-        "subtype",
-        "device",
-        "egv",
-        "device_tick",
-        "device_id",
-    ]
-
-if calibrations_py.shape[1] == 6:
-    calibrations_py.columns = [
-        "index",
-        "ts",
-        "type",
-        "device",
-        "egv",
-        "device_id",
-    ]
-
-# render source
-from src import (
-    compute_TIR,
-    compute_TBR,
-    compute_TAR,
-    compute_GMI,
-    compute_summary_metrics,
-)
-```
-
 ## By Hour Summarizing
 
-```{python}
+Tables and figures in this section and below come from `notebooks/tables/` and `notebooks/images/`. Generate them by running from the project root (with your venv activated):
 
-#| label: hourly-metrics
-import importlib
-import src.hourly
-
-# Reload so edits to src/hourly.py take effect without restarting
-importlib.reload(src.hourly)
-from src.hourly import (
-    make_hour_of_day_metrics,
-    make_hour_dow_metrics,
-)
-
-hour_of_day_metrics_py = make_hour_of_day_metrics(cgm_py)
-hour_dow_metrics_py = make_hour_dow_metrics(cgm_py)
-
-hour_of_day_metrics_py.head()
-hour_dow_metrics_py.head()
+```bash
+python scripts/build_eda_data.py
 ```
+
+(Optional: pass a CSV path if not using `data/raw/*.csv`.)
+
+## By Hour Summarizing
 
 # EDA
 
@@ -208,8 +109,7 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 ```{r}
 #| label: by-hour-viz
 
-hourly_df <- as.data.frame(reticulate::py_to_r(py$hour_of_day_metrics_py))
-
+hourly_df <- read_csv("tables/hourly_metrics.csv", show_col_types = FALSE)
 hourly_df$hour <- as.integer(hourly_df$hour)
 hourly_df$hour_label <- format(
   as.POSIXct(sprintf("2000-01-01 %02d:00:00", hourly_df$hour),
@@ -247,208 +147,41 @@ ggplot(hourly_df, aes(x = factor(hour, labels = hour_label), y = mean)) +
 
 ## Glycemic Analysis
 
-```{python}
+```{r}
 #| label: glyc-metrics
-from src import (
-    compute_TIR,
-    compute_TBR,
-    compute_TAR,
-    compute_GMI,
-    compute_summary_metrics,
-)
 
-# Pass raw EGV column; src/metrics._normalize_glucose() handles "Low"/"High" before conversion
-glucose = cgm_py["egv"]
-
-_raw = {
-    "TIR": compute_TIR(glucose),
-    "TBR": compute_TBR(glucose),
-    "TAR": compute_TAR(glucose),
-    "GMI": compute_GMI(glucose),
-    "summary": compute_summary_metrics(glucose),
-}
-
-# Round for display: TIR, TBR, TAR, GMI → 2 decimals; summary values → integers
-def _round_summary(d):
-    return {k: int(round(v, 0)) if np.isfinite(v) else v for k, v in d.items()}
-
-metrics_unmasked = {
-    "TIR": round(_raw["TIR"], 2),
-    "TBR": round(_raw["TBR"], 2),
-    "TAR": round(_raw["TAR"], 2),
-    "GMI": round(_raw["GMI"], 2),
-    "summary": _round_summary(_raw["summary"]),
-}
-
-metrics_unmasked
+glycemic_metrics <- read_csv("tables/glycemic_metrics.csv", show_col_types = FALSE)
+glycemic_metrics
 ```
 
 # Masking Analysis
 
 Excluding unstable segments (sensor noise, spikes, flatlines, dropouts) changes TIR, TBR, TAR, and GMI. Below we compare metrics with no masking, with each heuristic applied alone, and with the combined instability mask.
 
-```{python}
-#| label: masking-masks-and-table
+```{r}
+#| label: masking-table
 
-from src import (
-    local_variance_mask,
-    jump_spike_mask,
-    jitter_mask,
-    drift_window_mask,
-    dropout_flatline_mask,
-    long_nan_run_mask,
-    session_warmup_tail_mask,
-    calibration_period_mask,
-    instability_mask,
-    compute_TIR,
-    compute_TBR,
-    compute_TAR,
-    compute_GMI,
-    compute_summary_metrics,
-)
-
-# Use same glucose series as glycemic analysis; same defaults as instability_mask()
-glucose_arr = cgm_py["egv"]
-n = len(glucose_arr)
-
-# Build each heuristic mask (defaults matching instability_mask)
-m1 = local_variance_mask(glucose_arr, window_min=30, interval_min=5, threshold=None)
-m2 = jump_spike_mask(glucose_arr, threshold_mgdL=15, interval_min=5)
-m3 = jitter_mask(glucose_arr, window_min=30, min_sign_changes=4, interval_min=5)
-m4 = drift_window_mask(
-    glucose_arr,
-    drift_duration_hr=24,
-    low_threshold_mgdL=70,
-    low_duration_hr=8,
-    interval_min=5,
-)
-m5 = dropout_flatline_mask(glucose_arr, window_min=30, interval_min=5)
-m6 = long_nan_run_mask(glucose_arr, dropout_min=30, prior_hr=1, interval_min=5)
-m_warmup_tail = session_warmup_tail_mask(
-    glucose_arr, cgm_py["device_id"], warmup_hr=24, tail_hr=24, interval_min=5
-)
-# Calibration timestamps: use first available of ts, Timestamp, Time
-for col in ("ts", "Timestamp", "Time"):
-    if col in calibrations_py.columns:
-        cal_ts = calibrations_py[col]
-        break
-else:
-    raise ValueError("Calibration table needs a timestamp column (ts, Timestamp, or Time)")
-m_calibration = calibration_period_mask(
-    glucose_arr, cgm_py["ts"], cal_ts, prior_hr=1, post_min=30
-)
-
-# Ensure all masks align to glucose length (edge effects can differ by 1)
-def _pad_mask(mask, size):
-    if mask is None or size <= 0:
-        return None
-    m = np.asarray(mask, dtype=bool)
-    if len(m) < size:
-        return np.resize(m, size)
-    return m[:size]
-
-# Combined = union of the same masks shown in the table (so % flagged is comparable)
-combined = (
-    _pad_mask(m1, n) | _pad_mask(m2, n) | _pad_mask(m3, n)
-    | _pad_mask(m4, n) | _pad_mask(m5, n) | _pad_mask(m6, n)
-    | _pad_mask(m_warmup_tail, n) | _pad_mask(m_calibration, n)
-)
-
-scenarios = [
-    ("Unmasked", None),
-    ("Variance", _pad_mask(m1, n)),
-    ("Jump spike", _pad_mask(m2, n)),
-    ("Jitter", _pad_mask(m3, n)),
-    ("Drift", _pad_mask(m4, n)),
-    ("Flatline", _pad_mask(m5, n)),
-    ("Long NaN", _pad_mask(m6, n)),
-    ("Warmup/tail", _pad_mask(m_warmup_tail, n)),
-    ("Calibration", _pad_mask(m_calibration, n)),
-    ("Combined", _pad_mask(combined, n)),
-]
-
-rows = []
-for name, mask in scenarios:
-    pct_flagged = 0.0 if mask is None else (100.0 * np.sum(mask) / n)
-    tir = compute_TIR(glucose_arr, mask=mask)
-    tbr = compute_TBR(glucose_arr, mask=mask)
-    tar = compute_TAR(glucose_arr, mask=mask)
-    gmi = compute_GMI(glucose_arr, mask=mask)
-    summary = compute_summary_metrics(glucose_arr, mask=mask)
-    mean_glucose = summary["mean"]
-    rows.append({
-        "Scenario": name,
-        "% flagged": round(pct_flagged, 2),
-        "TIR": round(tir, 2) if np.isfinite(tir) else np.nan,
-        "TBR": round(tbr, 2) if np.isfinite(tbr) else np.nan,
-        "TAR": round(tar, 2) if np.isfinite(tar) else np.nan,
-        "GMI": round(gmi, 2) if np.isfinite(gmi) else np.nan,
-        "Mean (mg/dL)": int(round(mean_glucose, 0)) if np.isfinite(mean_glucose) else np.nan,
-    })
-
-masking_summary_df = pd.DataFrame(rows)
+masking_summary_df <- read_csv("tables/masking_summary.csv", show_col_types = FALSE)
+# Rename for display
+masking_summary_df <- masking_summary_df |>
+  rename("% flagged" = pct_flagged, "Mean (mg/dL)" = Mean_mg_dL)
 masking_summary_df
 ```
 
-```{python}
+```{r}
 #| label: masking-bar-chart
 #| fig-cap: "TIR, TBR, TAR, and GMI by masking scenario. Excluding unstable segments (per heuristic or combined) can shift metrics relative to unmasked analysis."
-import matplotlib.pyplot as plt
-from matplotlib.ticker import PercentFormatter
-from matplotlib import ticker
 
-fig, axes = plt.subplots(2, 2, figsize=(12, 8))
-axes = axes.flatten()
-metrics_plot = ["TIR", "TBR", "TAR", "GMI"]
-x = range(len(masking_summary_df))
-width = 0.6
-
-for ax, col in zip(axes, metrics_plot):
-    bars = ax.bar(x, masking_summary_df[col], width=width, color="steelblue", edgecolor="white", linewidth=0.5)
-    ax.set_xticks(x)
-    ax.set_xticklabels(masking_summary_df["Scenario"], rotation=45, ha="right")
-    ax.set_ylabel(col)
-    ax.set_title(col)
-    # Y-axis as percentage
-    if col == "GMI":
-        ax.set_ylim(4, 7)
-        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f"{x:.1f}%"))
-        ax.bar_label(bars, labels=[f"{v:.1f}%" if np.isfinite(v) else "—" for v in masking_summary_df[col]])
-    else:
-        ax.yaxis.set_major_formatter(PercentFormatter(xmax=1))
-        ax.bar_label(bars, fmt="{:.0%}")
-
-plt.suptitle("Metric sensitivity by masking scenario", y=1.02)
-plt.tight_layout()
-plt.show()
+knitr::include_graphics("images/masking_bar_chart.png")
 ```
 
 Excluding unstable segments changes reported TIR, TBR, and TAR because masked readings are dropped from both numerator and denominator. The combined mask typically has the largest effect; per-heuristic rows show which failure modes (variance, spikes, flatline, etc.) move the metrics most in this dataset.
 
-```{python}
+```{r}
 #| label: masking-time-series
 #| fig-cap: "CGM glucose and combined instability mask over a 5-day window. Shaded regions indicate readings flagged as unstable and excluded from masked metrics."
-# Plot a 5-day window (5 * 24 * 12 = 1440 points at 5-min interval) from the start of the series
-window_points = min(5 * 24 * 12, len(glucose_arr))
-s_win = cgm_py["egv"].iloc[:window_points]
-glucose_win = np.asarray(s_win.replace("Low", 39) if hasattr(s_win, "replace") else [39 if x == "Low" else x for x in s_win], dtype=float)
-mask_win = combined[:window_points]
-x_axis = np.arange(window_points)
 
-fig, ax = plt.subplots(figsize=(12, 4))
-ax.plot(x_axis, glucose_win, color="black", linewidth=0.6, alpha=0.9, label="Glucose")
-# Shade unstable regions
-unstable_starts = np.where(np.diff(np.concatenate([[False], mask_win, [False]]).astype(int)) == 1)[0]
-unstable_ends = np.where(np.diff(np.concatenate([[False], mask_win, [False]]).astype(int)) == -1)[0]
-for start, end in zip(unstable_starts, unstable_ends):
-    ax.axvspan(start, end, alpha=0.25, color="red", label="Unstable" if start == unstable_starts[0] else None)
-ax.set_xlabel("Time index (5-min readings)")
-ax.set_ylabel("Glucose (mg/dL)")
-ax.set_title("Glucose and combined instability mask (first 5 days)")
-ax.set_ylim(40, 350)
-ax.legend(loc="upper right")
-plt.tight_layout()
-plt.show()
+knitr::include_graphics("images/masking_timeseries.png")
 ```
 
 # Conclusion
