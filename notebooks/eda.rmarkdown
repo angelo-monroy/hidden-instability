@@ -6,9 +6,11 @@ title: "Personal CGM Data EDA"
 format: html
 ---
 
+
 # Intro
 
 Performing EDA of personal CGM data for use in hidden-instability. Dexcom CGM G7 is an FDA-approved medical device that continuously monitors glucose via measuring of interstitial fluid. It lasts for 10 days + 12 hour grace period.
+
 
 ```{r}
 #| label: libraries
@@ -33,11 +35,13 @@ if (dir.exists(venv_path)) {
 source("../R/helpers.R")
 ```
 
+
 # Data
 
 Data was sourced from Dexcom Clarity app January 23, 2026.
 
 ## R
+
 
 ```{r}
 #| label: load-raw-local
@@ -51,7 +55,9 @@ df <- read_csv(raw_path[1], show_col_types = FALSE)
 problems(df)
 ```
 
+
 CSV had 17 rows missing NA for last column. Manually fixed data and reread csv.
+
 
 ```{r}
 #| label: reload-raw-local
@@ -81,18 +87,16 @@ calibrations <- df |>
     drop_empty_columns()
 ```
 
+
 ## Python
 
 Reload dataset with Python for glycemic analysis
+
 
 ```{python}
 #| label: r-df-to-python
 import sys
 from pathlib import Path
-
-# Non-interactive backend so render doesn't hang waiting for a display
-import matplotlib
-matplotlib.use("Agg")
 
 import numpy as np
 import pandas as pd
@@ -163,7 +167,9 @@ from src import (
 )
 ```
 
+
 ## By Hour Summarizing
+
 
 ```{python}
 
@@ -185,7 +191,9 @@ hour_of_day_metrics_py.head()
 hour_dow_metrics_py.head()
 ```
 
+
 # EDA
+
 
 ```{r}
 #| label: basic-sum
@@ -194,16 +202,18 @@ data_completion <- (nrow(cgm)/1440*5) / as.numeric(max(cgm$ts) - min(cgm$ts))
 
 ```
 
+
 ## Summary
 
-* Time Period: `{r} format(min(cgm$ts), "%B %d, %Y")` - `{r} format(max(cgm$ts), "%B %d, %Y")`
-* Device: `{r} unique(cgm$device)`
-* Data Availability: `{r} pct(data_completion, 1)`
+* Time Period: `r .QuartoInlineRender(format(min(cgm$ts), "%B %d, %Y"))` - `r .QuartoInlineRender(format(max(cgm$ts), "%B %d, %Y"))`
+* Device: `r .QuartoInlineRender(unique(cgm$device))`
+* Data Availability: `r .QuartoInlineRender(pct(data_completion, 1))`
 * CGMs Used in Period: `{r length(unique(cgm$device_id))}`
 * Manual BGM Calibrations: `{r nrow(calibrations)}`
 * Meal Entries: `{r nrow(meals)}`
 
 ## Visualizations
+
 
 ```{r}
 #| label: by-hour-viz
@@ -245,7 +255,9 @@ ggplot(hourly_df, aes(x = factor(hour, labels = hour_label), y = mean)) +
 ```
 
 
+
 ## Glycemic Analysis
+
 
 ```{python}
 #| label: glyc-metrics
@@ -283,9 +295,11 @@ metrics_unmasked = {
 metrics_unmasked
 ```
 
+
 # Masking Analysis
 
 Excluding unstable segments (sensor noise, spikes, flatlines, dropouts) changes TIR, TBR, TAR, and GMI. Below we compare metrics with no masking, with each heuristic applied alone, and with the combined instability mask.
+
 
 ```{python}
 #| label: masking-masks-and-table
@@ -423,7 +437,9 @@ plt.tight_layout()
 plt.show()
 ```
 
+
 Excluding unstable segments changes reported TIR, TBR, and TAR because masked readings are dropped from both numerator and denominator. The combined mask typically has the largest effect; per-heuristic rows show which failure modes (variance, spikes, flatline, etc.) move the metrics most in this dataset.
+
 
 ```{python}
 #| label: masking-time-series
@@ -450,6 +466,7 @@ ax.legend(loc="upper right")
 plt.tight_layout()
 plt.show()
 ```
+
 
 # Conclusion
 
