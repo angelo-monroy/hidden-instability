@@ -280,8 +280,8 @@ n = len(glucose_arr)
 
 # Build each heuristic mask (defaults matching instability_mask)
 m1 = local_variance_mask(glucose_arr, window_min=30, interval_min=5, threshold=None)
-m2 = jump_spike_mask(glucose_arr, threshold_mgdL=20, interval_min=5)
-m3 = jitter_mask(glucose_arr, window_min=30, min_sign_changes=2, interval_min=5)
+m2 = jump_spike_mask(glucose_arr, threshold_mgdL=15, interval_min=5)
+m3 = jitter_mask(glucose_arr, window_min=30, min_sign_changes=4, interval_min=5)
 m4 = drift_window_mask(
     glucose_arr,
     drift_duration_hr=24,
