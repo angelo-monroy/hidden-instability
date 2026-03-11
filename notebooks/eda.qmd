@@ -326,9 +326,12 @@ def _pad_mask(mask, size):
         return np.resize(m, size)
     return m[:size]
 
-# Combined = all reading-level heuristics + session warmup/tail + calibration windows
-combined = instability_mask(glucose_arr)
-combined = combined | _pad_mask(m_warmup_tail, n) | _pad_mask(m_calibration, n)
+# Combined = union of the same masks shown in the table (so % flagged is comparable)
+combined = (
+    _pad_mask(m1, n) | _pad_mask(m2, n) | _pad_mask(m3, n)
+    | _pad_mask(m4, n) | _pad_mask(m5, n) | _pad_mask(m6, n)
+    | _pad_mask(m_warmup_tail, n) | _pad_mask(m_calibration, n)
+)
 
 scenarios = [
     ("Unmasked", None),
