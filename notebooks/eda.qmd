@@ -254,7 +254,138 @@ metrics_unmasked
 
 # Masking Analysis
 
+Excluding unstable segments (sensor noise, spikes, flatlines, dropouts) changes TIR, TBR, TAR, and GMI. Below we compare metrics with no masking, with each heuristic applied alone, and with the combined instability mask.
 
+```{python}
+#| label: masking-masks-and-table
+
+from src import (
+    local_variance_mask,
+    jump_spike_mask,
+    jitter_mask,
+    drift_window_mask,
+    dropout_flatline_mask,
+    long_nan_run_mask,
+    instability_mask,
+    compute_TIR,
+    compute_TBR,
+    compute_TAR,
+    compute_GMI,
+    compute_summary_metrics,
+)
+
+# Use same glucose series as glycemic analysis; same defaults as instability_mask()
+glucose_arr = cgm_py["egv"]
+n = len(glucose_arr)
+
+# Build each heuristic mask (defaults matching instability_mask)
+m1 = local_variance_mask(glucose_arr, window_min=30, interval_min=5, threshold=None)
+m2 = jump_spike_mask(glucose_arr, threshold_mgdL=20, interval_min=5)
+m3 = jitter_mask(glucose_arr, window_min=30, min_sign_changes=2, interval_min=5)
+m4 = drift_window_mask(
+    glucose_arr,
+    drift_duration_hr=24,
+    low_threshold_mgdL=70,
+    low_duration_hr=8,
+    interval_min=5,
+)
+m5 = dropout_flatline_mask(glucose_arr, window_min=30, interval_min=5)
+m6 = long_nan_run_mask(glucose_arr, dropout_min=30, prior_hr=1, interval_min=5)
+combined = instability_mask(glucose_arr)
+
+# Ensure all masks align to glucose length (edge effects can differ by 1)
+def _pad_mask(mask, size):
+    if mask is None or size <= 0:
+        return None
+    m = np.asarray(mask, dtype=bool)
+    if len(m) < size:
+        return np.resize(m, size)
+    return m[:size]
+
+scenarios = [
+    ("Unmasked", None),
+    ("Variance", _pad_mask(m1, n)),
+    ("Jump spike", _pad_mask(m2, n)),
+    ("Jitter", _pad_mask(m3, n)),
+    ("Drift", _pad_mask(m4, n)),
+    ("Flatline", _pad_mask(m5, n)),
+    ("Long NaN", _pad_mask(m6, n)),
+    ("Combined", _pad_mask(combined, n)),
+]
+
+rows = []
+for name, mask in scenarios:
+    pct_flagged = 0.0 if mask is None else (100.0 * np.sum(mask) / n)
+    tir = compute_TIR(glucose_arr, mask=mask)
+    tbr = compute_TBR(glucose_arr, mask=mask)
+    tar = compute_TAR(glucose_arr, mask=mask)
+    gmi = compute_GMI(glucose_arr, mask=mask)
+    summary = compute_summary_metrics(glucose_arr, mask=mask)
+    mean_glucose = summary["mean"]
+    rows.append({
+        "Scenario": name,
+        "% flagged": round(pct_flagged, 2),
+        "TIR": round(tir, 2) if np.isfinite(tir) else np.nan,
+        "TBR": round(tbr, 2) if np.isfinite(tbr) else np.nan,
+        "TAR": round(tar, 2) if np.isfinite(tar) else np.nan,
+        "GMI": round(gmi, 2) if np.isfinite(gmi) else np.nan,
+        "Mean (mg/dL)": int(round(mean_glucose, 0)) if np.isfinite(mean_glucose) else np.nan,
+    })
+
+masking_summary_df = pd.DataFrame(rows)
+masking_summary_df
+```
+
+```{python}
+#| label: masking-bar-chart
+#| fig-cap: "TIR, TBR, TAR, and GMI by masking scenario. Excluding unstable segments (per heuristic or combined) can shift metrics relative to unmasked analysis."
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+axes = axes.flatten()
+metrics_plot = ["TIR", "TBR", "TAR", "GMI"]
+x = range(len(masking_summary_df))
+width = 0.6
+
+for ax, col in zip(axes, metrics_plot):
+    ax.bar(x, masking_summary_df[col], width=width, color="steelblue", edgecolor="white", linewidth=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(masking_summary_df["Scenario"], rotation=45, ha="right")
+    ax.set_ylabel(col)
+    ax.set_title(col)
+
+plt.suptitle("Metric sensitivity by masking scenario", y=1.02)
+plt.tight_layout()
+plt.show()
+```
+
+Excluding unstable segments changes reported TIR, TBR, and TAR because masked readings are dropped from both numerator and denominator. The combined mask typically has the largest effect; per-heuristic rows show which failure modes (variance, spikes, flatline, etc.) move the metrics most in this dataset.
+
+```{python}
+#| label: masking-time-series
+#| fig-cap: "CGM glucose and combined instability mask over a 5-day window. Shaded regions indicate readings flagged as unstable and excluded from masked metrics."
+# Plot a 5-day window (5 * 24 * 12 = 1440 points at 5-min interval) from the start of the series
+window_points = min(5 * 24 * 12, len(glucose_arr))
+s_win = cgm_py["egv"].iloc[:window_points]
+glucose_win = np.asarray(s_win.replace("Low", 39) if hasattr(s_win, "replace") else [39 if x == "Low" else x for x in s_win], dtype=float)
+mask_win = combined[:window_points]
+x_axis = np.arange(window_points)
+
+fig, ax = plt.subplots(figsize=(12, 4))
+ax.plot(x_axis, glucose_win, color="black", linewidth=0.6, alpha=0.9, label="Glucose")
+# Shade unstable regions
+unstable_starts = np.where(np.diff(np.concatenate([[False], mask_win, [False]]).astype(int)) == 1)[0]
+unstable_ends = np.where(np.diff(np.concatenate([[False], mask_win, [False]]).astype(int)) == -1)[0]
+for start, end in zip(unstable_starts, unstable_ends):
+    ax.axvspan(start, end, alpha=0.25, color="red", label="Unstable" if start == unstable_starts[0] else None)
+ax.set_xlabel("Time index (5-min readings)")
+ax.set_ylabel("Glucose (mg/dL)")
+ax.set_title("Glucose and combined instability mask (first 5 days)")
+ax.set_ylim(40, 350)
+ax.legend(loc="upper right")
+plt.tight_layout()
+plt.show()
+```
 
 # References
 

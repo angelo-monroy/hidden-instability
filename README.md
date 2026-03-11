@@ -24,13 +24,13 @@ pip install -r requirements.txt
 
 - **`src/`** – Shared pipeline: instability heuristics → binary mask, TIR/TBR/TAR with optional masking. Python for data-heavy compute; usable from R via `reticulate` or from Python notebooks.
 - **`data/`** – Raw and processed data (local only; not committed). Synthetic outputs go under `data/processed/` when notebooks added.
-- **Notebooks** – To be added after recircle (R preferred: tidyverse, `|>`, gtsummary; Python acceptable; CGM metrics may use this Python core for speed/parallelism).
+- **`notebooks/`** – Quarto Qmd (R: tidyverse, `|>`, gtsummary; Python: CGM metrics may use this Python core for speed/parallelism).
 
 ## Data
 
-All raw data stays local. Only synthetic or derived artifacts may be committed. Do not commit `data/raw/`.
+All data stays local. Do not commit `data`.
 
 ## Workflow
 
-- `main`: stable, reproducible. `dev`: active development. `exp-*`: experiments.
+- `main`: stable, reproducible. `dev`: active development.
 - Commit before Cursor refactors. Semantic messages: `feat:`, `refactor:`, `exp:`.

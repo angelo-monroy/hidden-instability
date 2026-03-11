@@ -2,13 +2,17 @@
 Instability heuristics for CGM time series (5-min readings).
 All functions take a 1D array of glucose values and return a boolean mask
 (True = unstable). Combine with instability_mask() for the full derived mask.
+Accepts raw EGV (e.g. Dexcom "Low" strings) and normalizes like metrics.
 """
 
 import numpy as np
 
+from .metrics import _normalize_glucose
+
 
 def _as_array(series):
-    """Extract 1D float array from Series or array; drop NaN for window logic."""
+    """Extract 1D float array from Series or array; normalize 'Low' like metrics."""
+    series = _normalize_glucose(series)
     arr = np.asarray(series, dtype=float)
     if arr.ndim != 1:
         raise ValueError("Expected 1D glucose series")

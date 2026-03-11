@@ -6,21 +6,37 @@ GMI: estimated A1C-equivalent (%) from mean glucose (mg/dL).
 """
 
 import numpy as np
+import pandas as pd
 
 
 def _normalize_glucose(series):
     """
     Coerce CGM glucose values into numeric form.
 
-    Dexcom exports may encode very low glucose as the string "Low".
-    Treat those as 39 mg/dL so we can safely convert to float.
+    Dexcom exports may encode very low glucose as the string "Low" (or "low").
+    Non-numeric values are treated as 39 mg/dL so we can safely convert to float.
     """
-    # Pandas Series / array-like with .replace
-    if hasattr(series, "replace"):
-        return series.replace("Low", 39)
+    # Pandas Series: coerce to numeric; any non-numeric (e.g. "Low", "low") -> NaN -> 39
+    if hasattr(series, "__iter__") and not isinstance(series, (str, bytes)):
+        try:
+            out = pd.to_numeric(series, errors="coerce")
+            if hasattr(out, "fillna"):
+                return out.fillna(39).values
+            # numpy array from to_numeric
+            out = np.asarray(out, dtype=float)
+            return np.nan_to_num(out, nan=39.0)
+        except Exception:
+            pass
+    # Fallback: scalar or list-like with possible "Low"
+    def _coerce(x):
+        if isinstance(x, str) and x.strip().lower() == "low":
+            return 39.0
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return 39.0
 
-    # Generic iterable (list, numpy array of objects/strings, etc.)
-    return [39 if x == "Low" else x for x in series]
+    return np.array([_coerce(x) for x in series], dtype=float)
 
 
 def _as_array(series):
