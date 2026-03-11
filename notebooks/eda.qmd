@@ -22,9 +22,9 @@ library(ggplot2)
 library(reticulate)
 
 # interactive source
-source("R/helpers.R")
+# source("R/helpers.R")
 # render source
-# source("../R/helpers.R")
+source("../R/helpers.R")
 ```
 
 # Data
@@ -217,7 +217,7 @@ ggplot(hourly_df, aes(x = factor(hour, labels = hour_label), y = mean)) +
   ) +
   labs(
     x = "Hour of Day",
-    y = "Mean Blood Glucose Mg/dL",
+    y = "Mean Blood Glucose mg/dL",
     title = "Mean Glucose by Hour"
   ) +
    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
@@ -373,6 +373,8 @@ masking_summary_df
 #| label: masking-bar-chart
 #| fig-cap: "TIR, TBR, TAR, and GMI by masking scenario. Excluding unstable segments (per heuristic or combined) can shift metrics relative to unmasked analysis."
 import matplotlib.pyplot as plt
+from matplotlib.ticker import PercentFormatter
+from matplotlib import ticker
 
 fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 axes = axes.flatten()
@@ -381,11 +383,19 @@ x = range(len(masking_summary_df))
 width = 0.6
 
 for ax, col in zip(axes, metrics_plot):
-    ax.bar(x, masking_summary_df[col], width=width, color="steelblue", edgecolor="white", linewidth=0.5)
+    bars = ax.bar(x, masking_summary_df[col], width=width, color="steelblue", edgecolor="white", linewidth=0.5)
     ax.set_xticks(x)
     ax.set_xticklabels(masking_summary_df["Scenario"], rotation=45, ha="right")
     ax.set_ylabel(col)
     ax.set_title(col)
+    # Y-axis as percentage
+    if col == "GMI":
+        ax.set_ylim(4, 7)
+        ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, p: f"{x:.1f}%"))
+        ax.bar_label(bars, labels=[f"{v:.1f}%" if np.isfinite(v) else "—" for v in masking_summary_df[col]])
+    else:
+        ax.yaxis.set_major_formatter(PercentFormatter(xmax=1))
+        ax.bar_label(bars, fmt="{:.0%}")
 
 plt.suptitle("Metric sensitivity by masking scenario", y=1.02)
 plt.tight_layout()
