@@ -6,6 +6,7 @@ Accepts raw EGV (e.g. Dexcom "Low" strings) and normalizes like metrics.
 """
 
 import numpy as np
+import pandas as pd
 
 from .metrics import _normalize_glucose
 
@@ -202,6 +203,116 @@ def long_nan_run_mask(glucose, dropout_min=30, prior_hr=1, interval_min=5):
                     prior_start = max(0, run_start - k_prior)
                     out[prior_start:run_start] = True
                 run_start = None
+    return out
+
+
+def session_warmup_tail_mask(
+    glucose,
+    device_id,
+    *,
+    warmup_hr=24,
+    tail_hr=24,
+    interval_min=5,
+):
+    """
+    Flag the first warmup_hr and last tail_hr of each CGM session (contiguous device_id).
+
+    Dexcom exports omit rows when the sensor is off, so there are no NaNs for "CGM off".
+    Sessions are inferred from device_id: a new device_id starts a new session. The first
+    ~24 h of a new sensor are often less accurate (warm-up); the last ~24 h before swap are
+    also less reliable. This mask flags those segments so they can be excluded from metrics.
+
+    Parameters
+    ----------
+    glucose : array-like
+        1D glucose series (length used for alignment; values not used).
+    device_id : array-like
+        Same length as glucose; identifies the sensor/session per reading (e.g. cgm_py["device_id"]).
+    warmup_hr : float
+        Hours at the start of each session to flag (default 24).
+    tail_hr : float
+        Hours at the end of each session to flag (default 24).
+    interval_min : int
+        Minutes between readings (default 5); used to convert hours to point counts.
+
+    Returns
+    -------
+    np.ndarray
+        Boolean mask, True = unstable (warm-up or tail of a session).
+    """
+    n = len(np.asarray(glucose).reshape(-1))
+    device_id = np.asarray(device_id).reshape(-1)
+    if device_id.size != n:
+        raise ValueError("device_id length must match glucose length")
+
+    points_per_hr = max(1, int(60 / interval_min))
+    warmup_points = int(warmup_hr * points_per_hr)
+    tail_points = int(tail_hr * points_per_hr)
+
+    # Run boundaries: new run where device_id changes (or at index 0)
+    run_start = np.zeros(n, dtype=bool)
+    run_start[0] = True
+    run_start[1:] = device_id[1:] != device_id[:-1]
+    run_start_ix = np.where(run_start)[0]
+    run_end_ix = np.concatenate([run_start_ix[1:] - 1, [n - 1]])
+
+    out = np.zeros(n, dtype=bool)
+    for start, end in zip(run_start_ix, run_end_ix):
+        # First warmup_hr of session
+        first_end = min(start + warmup_points, end + 1)
+        out[start:first_end] = True
+        # Last tail_hr of session
+        last_start = max(end - tail_points + 1, start)
+        out[last_start : end + 1] = True
+    return out
+
+
+def calibration_period_mask(
+    glucose,
+    cgm_ts,
+    calibration_ts,
+    *,
+    prior_hr=1,
+    post_min=30,
+):
+    """
+    Flag CGM readings in a window around each manual BGM calibration event.
+
+    Calibrations indicate user-specified instability: the period leading up to
+    (fingerstick / meter entry) and following (sensor adjusting) the event is
+    often less reliable. This mask flags [t_cal - prior_hr, t_cal + post_min]
+    for each calibration time so those segments can be excluded from metrics.
+
+    Parameters
+    ----------
+    glucose : array-like
+        1D glucose series (length used for alignment).
+    cgm_ts : array-like
+        Timestamps for each CGM reading, same length as glucose (e.g. cgm_py["ts"]).
+    calibration_ts : array-like
+        Timestamps of calibration events (e.g. calibrations_py["ts"] or the ts column).
+    prior_hr : float
+        Hours before each calibration to flag (default 1).
+    post_min : float
+        Minutes after each calibration to flag (default 30).
+
+    Returns
+    -------
+    np.ndarray
+        Boolean mask, True = unstable (within any calibration window).
+    """
+    n = len(np.asarray(glucose).reshape(-1))
+    cgm_ts = pd.to_datetime(cgm_ts).values
+    calibration_ts = pd.to_datetime(calibration_ts).values
+    if cgm_ts.size != n:
+        raise ValueError("cgm_ts length must match glucose length")
+
+    out = np.zeros(n, dtype=bool)
+    for t_cal in calibration_ts:
+        t_cal = pd.Timestamp(t_cal)
+        start = t_cal - pd.Timedelta(hours=prior_hr)
+        end = t_cal + pd.Timedelta(minutes=post_min)
+        out |= (cgm_ts >= start) & (cgm_ts <= end)
     return out
 
 

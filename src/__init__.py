@@ -10,6 +10,8 @@ from .instability import (
     drift_window_mask,
     dropout_flatline_mask,
     long_nan_run_mask,
+    session_warmup_tail_mask,
+    calibration_period_mask,
     instability_mask,
 )
 from .metrics import compute_TIR, compute_TBR, compute_TAR, compute_GMI, compute_summary_metrics
@@ -22,6 +24,8 @@ __all__ = [
     "drift_window_mask",
     "dropout_flatline_mask",
     "long_nan_run_mask",
+    "session_warmup_tail_mask",
+    "calibration_period_mask",
     "instability_mask",
     "compute_TIR",
     "compute_TBR",

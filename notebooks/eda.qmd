@@ -22,9 +22,9 @@ library(ggplot2)
 library(reticulate)
 
 # interactive source
-# source("R/helpers.R")
+source("R/helpers.R")
 # render source
-source("../R/helpers.R")
+# source("../R/helpers.R")
 ```
 
 # Data
@@ -109,7 +109,7 @@ meals_py = meals_py.dropna(axis=1, how="all")
 cgm_py = cgm_py.dropna(axis=1, how="all")
 calibrations_py = calibrations_py.dropna(axis=1, how="all")
 
-# Align CGM column names with the R pipeline when the width matches
+# Align column names with the R pipeline when the width matches
 if cgm_py.shape[1] == 8:
     cgm_py.columns = [
         "index",
@@ -119,6 +119,16 @@ if cgm_py.shape[1] == 8:
         "device",
         "egv",
         "device_tick",
+        "device_id",
+    ]
+
+if calibrations_py.shape[1] == 6:
+    calibrations_py.columns = [
+        "index",
+        "ts",
+        "type",
+        "device",
+        "egv",
         "device_id",
     ]
 
@@ -266,6 +276,8 @@ from src import (
     drift_window_mask,
     dropout_flatline_mask,
     long_nan_run_mask,
+    session_warmup_tail_mask,
+    calibration_period_mask,
     instability_mask,
     compute_TIR,
     compute_TBR,
@@ -291,7 +303,19 @@ m4 = drift_window_mask(
 )
 m5 = dropout_flatline_mask(glucose_arr, window_min=30, interval_min=5)
 m6 = long_nan_run_mask(glucose_arr, dropout_min=30, prior_hr=1, interval_min=5)
-combined = instability_mask(glucose_arr)
+m_warmup_tail = session_warmup_tail_mask(
+    glucose_arr, cgm_py["device_id"], warmup_hr=24, tail_hr=24, interval_min=5
+)
+# Calibration timestamps: use first available of ts, Timestamp, Time
+for col in ("ts", "Timestamp", "Time"):
+    if col in calibrations_py.columns:
+        cal_ts = calibrations_py[col]
+        break
+else:
+    raise ValueError("Calibration table needs a timestamp column (ts, Timestamp, or Time)")
+m_calibration = calibration_period_mask(
+    glucose_arr, cgm_py["ts"], cal_ts, prior_hr=1, post_min=30
+)
 
 # Ensure all masks align to glucose length (edge effects can differ by 1)
 def _pad_mask(mask, size):
@@ -302,6 +326,10 @@ def _pad_mask(mask, size):
         return np.resize(m, size)
     return m[:size]
 
+# Combined = all reading-level heuristics + session warmup/tail + calibration windows
+combined = instability_mask(glucose_arr)
+combined = combined | _pad_mask(m_warmup_tail, n) | _pad_mask(m_calibration, n)
+
 scenarios = [
     ("Unmasked", None),
     ("Variance", _pad_mask(m1, n)),
@@ -310,6 +338,8 @@ scenarios = [
     ("Drift", _pad_mask(m4, n)),
     ("Flatline", _pad_mask(m5, n)),
     ("Long NaN", _pad_mask(m6, n)),
+    ("Warmup/tail", _pad_mask(m_warmup_tail, n)),
+    ("Calibration", _pad_mask(m_calibration, n)),
     ("Combined", _pad_mask(combined, n)),
 ]
 
