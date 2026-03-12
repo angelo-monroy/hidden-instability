@@ -9,6 +9,7 @@ or, with pytest installed:
 
 import unittest
 import numpy as np
+import pandas as pd
 
 from .instability import (
     local_variance_mask,
@@ -17,6 +18,8 @@ from .instability import (
     drift_window_mask,
     dropout_flatline_mask,
     long_nan_run_mask,
+    session_warmup_tail_mask,
+    calibration_period_mask,
     instability_mask,
 )
 
@@ -174,6 +177,86 @@ class TestLongNanRunMask(unittest.TestCase):
         g = _glucose(100, 101, np.nan, np.nan, 102)
         m = long_nan_run_mask(g, dropout_min=30, prior_hr=1, interval_min=5)
         self.assertFalse(np.any(m), "short NaN run is not flagged by long_nan_run_mask")
+
+
+# ---- session_warmup_tail_mask ----
+
+class TestSessionWarmupTailMask(unittest.TestCase):
+    def test_output_shape_and_type(self):
+        g = _glucose(100, 102, 98, 101, 99)
+        dev = np.array(["A", "A", "A", "A", "A"])
+        m = session_warmup_tail_mask(g, dev, warmup_hr=1, tail_hr=1, interval_min=5)
+        self.assertEqual(m.shape, (5,))
+        self.assertEqual(m.dtype, bool)
+
+    def test_single_session_warmup_and_tail_flagged(self):
+        # 12 points = 1 hr @ 5 min; warmup_hr=1, tail_hr=1 -> first 12 and last 12 flagged
+        n = 24
+        g = np.full(n, 100.0)
+        dev = np.full(n, "s1")
+        m = session_warmup_tail_mask(g, dev, warmup_hr=1, tail_hr=1, interval_min=5)
+        self.assertTrue(m[0], "first point (warmup) should be flagged")
+        self.assertTrue(m[-1], "last point (tail) should be flagged")
+        self.assertTrue(np.any(m[:12]), "warmup segment should be flagged")
+        self.assertTrue(np.any(m[-12:]), "tail segment should be flagged")
+
+    def test_two_sessions_each_gets_warmup_and_tail(self):
+        # Session 1: indices 0..9; Session 2: 10..19
+        g = np.full(20, 100.0)
+        dev = np.array(["a"] * 10 + ["b"] * 10)
+        m = session_warmup_tail_mask(g, dev, warmup_hr=0.5, tail_hr=0.5, interval_min=5)
+        # 0.5 hr = 6 points @ 5 min
+        self.assertTrue(m[0], "start of first session flagged (warmup)")
+        self.assertTrue(m[9], "end of first session flagged (tail)")
+        self.assertTrue(m[10], "start of second session flagged (warmup)")
+        self.assertTrue(m[19], "end of second session flagged (tail)")
+
+    def test_device_id_length_mismatch_raises(self):
+        g = _glucose(100, 101, 102)
+        dev = np.array(["A", "B"])  # length 2
+        with self.assertRaises(ValueError) as ctx:
+            session_warmup_tail_mask(g, dev, warmup_hr=1, tail_hr=1, interval_min=5)
+        self.assertIn("device_id length", str(ctx.exception))
+
+
+# ---- calibration_period_mask ----
+
+class TestCalibrationPeriodMask(unittest.TestCase):
+    def test_output_shape_and_type(self):
+        g = _glucose(100, 102, 98, 101)
+        base = pd.Timestamp("2024-01-01 12:00:00")
+        cgm_ts = pd.date_range(base, periods=4, freq="5min")
+        cal_ts = []
+        m = calibration_period_mask(g, cgm_ts, cal_ts, prior_hr=1, post_min=30)
+        self.assertEqual(m.shape, (4,))
+        self.assertEqual(m.dtype, bool)
+
+    def test_one_calibration_window_flagged(self):
+        base = pd.Timestamp("2024-01-01 12:00:00")
+        # CGM at 12:00, 12:05, 12:10, 12:15, 12:20, 12:25 (6 points)
+        n = 6
+        g = np.full(n, 100.0)
+        cgm_ts = pd.date_range(base, periods=n, freq="5min")
+        # Cal at 12:10 -> window [11:00, 12:40]; prior_hr=1, post_min=30
+        cal_ts = [pd.Timestamp("2024-01-01 12:10:00")]
+        m = calibration_period_mask(g, cgm_ts, cal_ts, prior_hr=1, post_min=30)
+        # 12:10 is in range; 12:00 is 10 min before cal, within 1 hr prior; 12:15, 12:20, 12:25 within 30 min post
+        self.assertTrue(np.any(m), "at least one point in calibration window should be flagged")
+        self.assertTrue(m[2], "point at calibration time (12:10) should be flagged")
+
+    def test_no_calibrations_all_false(self):
+        g = _glucose(100, 102, 98)
+        base = pd.Timestamp("2024-01-01 12:00:00")
+        cgm_ts = pd.date_range(base, periods=3, freq="5min")
+        m = calibration_period_mask(g, cgm_ts, [], prior_hr=1, post_min=30)
+        np.testing.assert_array_equal(m, False)
+
+    def test_cgm_ts_length_mismatch_raises(self):
+        g = _glucose(100, 101, 102)
+        cgm_ts = pd.date_range("2024-01-01 12:00", periods=2, freq="5min")
+        with self.assertRaises(ValueError) as ctx:
+            calibration_period_mask(g, cgm_ts, [], prior_hr=1, post_min=30)
+        self.assertIn("cgm_ts length", str(ctx.exception))
 
 
 # ---- instability_mask (combined) ----

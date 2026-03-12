@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 - **`src/`** – Shared pipeline: instability heuristics → binary mask, TIR/TBR/TAR with optional masking. Python for data-heavy compute; usable from R via `reticulate` or from Python notebooks.
 - **`data/`** – Raw and processed data (local only; not committed). Synthetic outputs go under `data/processed/` when notebooks added.
-- **`notebooks/`** – Quarto Qmd (R: tidyverse, `|>`, gtsummary; Python: CGM metrics may use this Python core for speed/parallelism).
+- **`notebooks/`** – Quarto Qmd (R: for EDA and visualizations, tidyverse, `|>`, gtsummary (if needed); Python: CGM metrics use Python script to generate data tables and some visualizations)
 
 ## Data
 
